@@ -1,10 +1,5 @@
-# Check for Administrator privileges
-if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]"Administrator")) {
-    Write-Host "Error: This script requires Administrator privileges." -ForegroundColor Red
-    Write-Host "Please run PowerShell as Administrator." -ForegroundColor Yellow
-    if (-not [Console]::IsInputRedirected) { Pause }
-    Exit
-}
+. "$PSScriptRoot/lib/Common.ps1"
+Assert-Admin
 Write-Host "--- CPU Stress Test (Stability Check) ---" -ForegroundColor Red
 Write-Host "Press CTRL+C to stop the test." -ForegroundColor Yellow
 Write-Host "If your PC shuts down, you have an overheating problem." -ForegroundColor White

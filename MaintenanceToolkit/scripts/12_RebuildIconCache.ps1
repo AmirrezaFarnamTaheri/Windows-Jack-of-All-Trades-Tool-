@@ -1,23 +1,45 @@
-# Check for Administrator privileges
-if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]"Administrator")) {
-    Write-Host "Error: This script requires Administrator privileges." -ForegroundColor Red
-    Write-Host "Please run PowerShell as Administrator." -ForegroundColor Yellow
-    if (-not [Console]::IsInputRedirected) { Pause }
-    Exit
+. "$PSScriptRoot/lib/Common.ps1"
+Assert-Admin
+Write-Header "Rebuilding Icon and Thumbnail Cache"
+Write-Log "Warning: Windows Explorer will restart. Save open work." "Yellow"
+
+try {
+    # 1. Stop Explorer
+    Write-Log "Stopping Windows Explorer..."
+    Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
+    # Wait for it to actually die
+    Start-Sleep -Seconds 2
+
+    # 2. Delete Caches
+    $paths = @(
+        "$env:LOCALAPPDATA\Microsoft\Windows\Explorer\iconcache*",
+        "$env:LOCALAPPDATA\Microsoft\Windows\Explorer\thumbcache*"
+    )
+
+    foreach ($p in $paths) {
+        Write-Log "Clearing: $p"
+        Remove-Item -Path $p -Force -ErrorAction SilentlyContinue
+    }
+
+    # 3. Legacy IconCache.db
+    $legacy = "$env:LOCALAPPDATA\IconCache.db"
+    if (Test-Path $legacy) {
+        Remove-Item -Path $legacy -Force -ErrorAction SilentlyContinue
+        Write-Log "Cleared legacy IconCache.db"
+    }
+
+    # 4. Restart Explorer
+    Write-Log "Restarting Explorer..."
+    Start-Process explorer.exe
+
+    Write-Log "--- Success ---" "Green"
+
+} catch {
+    Write-Log "Error: $($_.Exception.Message)" "Red"
+    # Ensure explorer comes back
+    if (-not (Get-Process explorer -ErrorAction SilentlyContinue)) {
+        Start-Process explorer.exe
+    }
 }
-Write-Host "--- Rebuilding Icon and Thumbnail Cache ---" -ForegroundColor Cyan
-Write-Host "Your screen will flash black and the taskbar will disappear momentarily." -ForegroundColor Yellow
 
-Stop-Process -Name explorer -Force
-Start-Sleep -Seconds 2
-
-$iconCache = "$env:LOCALAPPDATA\Microsoft\Windows\Explorer\iconcache*"
-$thumbCache = "$env:LOCALAPPDATA\Microsoft\Windows\Explorer\thumbcache*"
-
-Remove-Item -Path $iconCache -Force -ErrorAction SilentlyContinue
-Remove-Item -Path $thumbCache -Force -ErrorAction SilentlyContinue
-
-Write-Host "Caches deleted. Restarting Explorer..." -ForegroundColor Green
-Start-Process explorer
-
-Write-Host "--- Visual Cache Rebuilt ---" -ForegroundColor Green
+Pause-If-Interactive

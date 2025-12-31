@@ -1,3 +1,4 @@
+. "$PSScriptRoot/lib/Common.ps1"
 # Ultimate System Maintenance Menu
 # Check for Administrator privileges
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]"Administrator")) {
@@ -26,6 +27,18 @@ function Show-Header {
     Write-Host "======================================================" -ForegroundColor Cyan
     Write-Host "      ULTIMATE SYSTEM MAINTENANCE TOOLKIT (v65)       " -ForegroundColor White
     Write-Host "======================================================" -ForegroundColor Cyan
+}
+
+function Show-Help {
+    Clear-Host
+    if (Test-Path "$PSScriptRoot\..\HELP.md") {
+        Get-Content "$PSScriptRoot\..\HELP.md" | More
+    } elseif (Test-Path "$PSScriptRoot\HELP.md") {
+        Get-Content "$PSScriptRoot\HELP.md" | More
+    } else {
+        Write-Host "Help file not found." -ForegroundColor Red
+    }
+    if (-not [Console]::IsInputRedirected) { Pause }
 }
 
 function Show-SubMenu ($Category) {
@@ -118,9 +131,9 @@ function Show-SubMenu ($Category) {
     $choice = Read-Host "Enter Script Number"
     if ($choice -eq 'B' -or $choice -eq 'b') { return }
     Run-Script $choice
-if (-not [Console]::IsInputRedirected) {
-    Pause
-}
+    if (-not [Console]::IsInputRedirected) {
+        Pause
+    }
 }
 
 # Main Loop
@@ -133,6 +146,7 @@ do {
     Write-Host "4. NETWORK      (Wi-Fi, DNS, Speed)"
     Write-Host "5. SECURITY     (Privacy, Audits, USB)"
     Write-Host "6. UTILITIES    (Backups, Updates, Tools)"
+    Write-Host "H. Help / About"
     Write-Host "Q. Quit"
     Write-Host "======================================================"
 
@@ -145,6 +159,8 @@ do {
         '4' { Show-SubMenu "NETWORK" }
         '5' { Show-SubMenu "SECURITY" }
         '6' { Show-SubMenu "UTILS" }
+        'H' { Show-Help }
+        'h' { Show-Help }
         'Q' { Exit }
         'q' { Exit }
     }

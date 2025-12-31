@@ -1,0 +1,52 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v1.1
+
+    - name: Install PSScriptAnalyzer
+      shell: powershell
+      run: |
+        Install-Module -Name PSScriptAnalyzer -Force -SkipPublisherCheck
+
+    - name: Lint PowerShell Scripts
+      shell: powershell
+      run: |
+        $results = Invoke-ScriptAnalyzer -Path "MaintenanceToolkit/scripts" -Severity Error -Recurse
+        if ($results) {
+            $results | Format-Table
+            Write-Error "Script Analyzer found errors."
+        } else {
+            Write-Host "No script errors found."
+        }
+
+    - name: Build Application
+      run: |
+        cd MaintenanceToolkit
+        ./BuildTool.ps1
+      shell: powershell
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: MaintenanceTool
+        path: MaintenanceToolkit/MaintenanceTool.exe
+
+    - name: Create Release
+      if: startsWith(github.ref, 'refs/tags/v')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: MaintenanceToolkit/MaintenanceTool.exe
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

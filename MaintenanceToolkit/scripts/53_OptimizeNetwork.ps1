@@ -1,15 +1,32 @@
-# Check for Administrator privileges
-if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]"Administrator")) {
-    Write-Host "Error: This script requires Administrator privileges." -ForegroundColor Red
-    Write-Host "Please run PowerShell as Administrator." -ForegroundColor Yellow
-    if (-not [Console]::IsInputRedirected) { Pause }
-    Exit
+. "$PSScriptRoot/lib/Common.ps1"
+Assert-Admin
+Write-Header "Optimizing TCP/IP Settings"
+
+try {
+    # 1. TCP Auto-Tuning
+    Write-Log "Configuring TCP Auto-Tuning..."
+    $current = Get-NetTCPSetting -SettingName "Internet" -ErrorAction SilentlyContinue
+    if ($null -eq $current) { $current = Get-NetTCPSetting | Select-Object -First 1 }
+
+    Write-Log "Current Auto-Tuning Level: $($current.AutoTuningLevelLocal)" "Gray"
+
+    # Set to Normal (Recommended for most broadband)
+    Set-NetTCPSetting -SettingName ($current.SettingName) -AutoTuningLevelLocal Normal -ErrorAction SilentlyContinue
+    Write-Log "Set Auto-Tuning to 'Normal'." "Green"
+
+    # 2. Disable heuristics (Old Windows scaling that can cause issues)
+    Write-Log "Disabling Windows Scaling Heuristics..."
+    netsh int tcp set heuristics disabled | Out-Null
+    Write-Log "Heuristics disabled." "Green"
+
+    # 3. Congestion Provider (CTCP is good, but CUBIC is default in Win10/11 usually)
+    # We leave this alone as changing it can cause issues on some networks.
+
+    Write-Log "--- Optimization Complete ---" "Cyan"
+    Write-Log "Settings verified."
+
+} catch {
+    Write-Log "Error optimizing network: $($_.Exception.Message)" "Red" "ERROR"
 }
-Write-Host "--- Optimizing TCP Receive Window ---" -ForegroundColor Cyan
 
-$current = Get-NetTCPSetting | Select-Object SettingName, AutoTuningLevelLocal
-Write-Host "Current Setting: $($current.AutoTuningLevelLocal)"
-
-netsh int tcp set global autotuninglevel=normal
-
-Write-Host "Network Stack Optimized." -ForegroundColor Green
+Pause-If-Interactive
