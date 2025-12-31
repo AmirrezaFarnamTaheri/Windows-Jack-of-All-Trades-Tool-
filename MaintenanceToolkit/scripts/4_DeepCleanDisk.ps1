@@ -12,7 +12,7 @@ try {
             try {
                 New-ItemProperty -Path $_.PSPath -Name StateFlags0001 -Value 2 -PropertyType DWord -Force -ErrorAction Stop | Out-Null
             } catch {
-                Write-Log "Warning: Could not set flag for $($_.PSChildName)" "Yellow"
+                Write-Log "Warning: Could not set flag for $($_.PSChildName). Continuing..." "Yellow"
             }
         }
     } else {

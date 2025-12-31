@@ -32,6 +32,8 @@ namespace SystemMaintenance
         // Batch Mode Controls
         private CheckBox chkBatchMode;
         private Button btnRunBatch;
+        private Button btnSelectAll;
+        private Button btnSelectNone;
 
         // State
         private bool isDarkMode = false;
@@ -74,22 +76,30 @@ namespace SystemMaintenance
 
             // Search Box
             GroupBox searchGroup = new GroupBox { Text = "Search Tools", Dock = DockStyle.Top, Height = 50 };
-            txtSearch = new TextBox { Dock = DockStyle.Fill, BorderStyle = BorderStyle.None, Font = new Font("Segoe UI", 11F) };
+            txtSearch = new TextBox { Dock = DockStyle.Fill, BorderStyle = BorderStyle.None, Font = new Font("Segoe UI", 11F), TabIndex = 0 };
             txtSearch.TextChanged += TxtSearch_TextChanged;
             searchGroup.Controls.Add(txtSearch);
             txtSearch.Location = new Point(5, 18);
             txtSearch.Width = 370;
             txtSearch.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top;
 
-            // Batch Mode Toggle
-            chkBatchMode = new CheckBox { Text = "Enable Batch Mode", Dock = DockStyle.Right, Width = 140, Appearance = Appearance.Button, TextAlign = ContentAlignment.MiddleCenter, FlatStyle = FlatStyle.Flat };
+            // Batch Mode Controls
+            chkBatchMode = new CheckBox { Text = "Batch Mode", Dock = DockStyle.Right, Width = 100, Appearance = Appearance.Button, TextAlign = ContentAlignment.MiddleCenter, FlatStyle = FlatStyle.Flat, TabIndex = 2 };
             chkBatchMode.CheckedChanged += ChkBatchMode_CheckedChanged;
 
+            btnSelectAll = new Button { Text = "All", Dock = DockStyle.Right, Width = 40, FlatStyle = FlatStyle.Flat, Visible = false, Font = new Font("Segoe UI", 8F) };
+            btnSelectAll.Click += (s, e) => SetAllBatchSelection(true);
+
+            btnSelectNone = new Button { Text = "None", Dock = DockStyle.Right, Width = 40, FlatStyle = FlatStyle.Flat, Visible = false, Font = new Font("Segoe UI", 8F) };
+            btnSelectNone.Click += (s, e) => SetAllBatchSelection(false);
+
             // Help Button
-            Button btnHelp = new Button { Text = "Help / About", Dock = DockStyle.Left, Width = 100, FlatStyle = FlatStyle.Flat };
+            Button btnHelp = new Button { Text = "Help", Dock = DockStyle.Left, Width = 60, FlatStyle = FlatStyle.Flat, TabIndex = 3 };
             btnHelp.Click += (s, e) => ShowHelp();
 
             Panel toolBar = new Panel { Dock = DockStyle.Bottom, Height = 30 };
+            toolBar.Controls.Add(btnSelectNone);
+            toolBar.Controls.Add(btnSelectAll);
             toolBar.Controls.Add(chkBatchMode);
             toolBar.Controls.Add(btnHelp);
 
@@ -104,7 +114,7 @@ namespace SystemMaintenance
             splitContainer = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, SplitterDistance = 500, FixedPanel = FixedPanel.Panel2 };
 
             // --- Tabs (Top Half) ---
-            tabs = new TabControl { Dock = DockStyle.Fill, Padding = new Point(12, 6), ItemSize = new Size(100, 30) };
+            tabs = new TabControl { Dock = DockStyle.Fill, Padding = new Point(12, 6), ItemSize = new Size(100, 30), TabIndex = 1 };
             BuildTabs();
             tabs.SelectedIndexChanged += (s, e) => FilterButtons(txtSearch.Text);
 
@@ -113,7 +123,7 @@ namespace SystemMaintenance
             lblDescTitle = new Label { Dock = DockStyle.Top, Height = 25, Font = new Font("Segoe UI", 11F, FontStyle.Bold), Text = "Hover over a tool to see details." };
             lblDescText = new Label { Dock = DockStyle.Fill, Text = "", Font = new Font("Segoe UI", 9.5F) };
 
-            btnRunBatch = new Button { Text = "RUN SELECTED (0)", Dock = DockStyle.Right, Width = 150, BackColor = Color.SeaGreen, ForeColor = Color.White, Visible = false, FlatStyle = FlatStyle.Flat, Font = new Font("Segoe UI", 9F, FontStyle.Bold) };
+            btnRunBatch = new Button { Text = "RUN SELECTED (0)", Dock = DockStyle.Right, Width = 150, BackColor = Color.SeaGreen, ForeColor = Color.White, Visible = false, FlatStyle = FlatStyle.Flat, Font = new Font("Segoe UI", 9F, FontStyle.Bold), TabIndex = 4 };
             btnRunBatch.Click += BtnRunBatch_Click;
 
             descPanel.Controls.Add(btnRunBatch);
@@ -129,7 +139,7 @@ namespace SystemMaintenance
             GroupBox grpLog = new GroupBox { Text = "Activity Log", Dock = DockStyle.Fill, Padding = new Padding(10) };
 
             Panel logControls = new Panel { Dock = DockStyle.Right, Width = 100 };
-            btnCancel = new Button { Text = "Cancel Script", Dock = DockStyle.Top, Height = 40, BackColor = Color.Firebrick, ForeColor = Color.White, Visible = false, FlatStyle = FlatStyle.Flat };
+            btnCancel = new Button { Text = "Cancel", Dock = DockStyle.Top, Height = 40, BackColor = Color.Firebrick, ForeColor = Color.White, Visible = false, FlatStyle = FlatStyle.Flat, TabIndex = 6 };
             btnCancel.Click += BtnCancel_Click;
             logControls.Controls.Add(btnCancel);
 
@@ -140,7 +150,8 @@ namespace SystemMaintenance
                 ReadOnly = true,
                 BackColor = Color.FromArgb(30, 30, 30),
                 ForeColor = Color.LimeGreen,
-                Font = new Font("Consolas", 10)
+                Font = new Font("Consolas", 10),
+                TabIndex = 5
             };
 
             grpLog.Controls.Add(txtLog);
@@ -193,9 +204,10 @@ namespace SystemMaintenance
         {
             string helpText =
                 "Ultimate System Maintenance Toolkit\n" +
-                "Version: 65\n\n" +
+                "Version: 66\n\n" +
                 "BATCH MODE:\n" +
                 "Enable 'Batch Mode' to select multiple scripts using checkboxes.\n" +
+                "Use 'All'/'None' to quickly select scripts.\n" +
                 "Click 'RUN SELECTED' to execute them sequentially.\n\n" +
                 "CATEGORIES:\n" +
                 "- CLEAN: Free up disk space.\n" +
@@ -214,38 +226,35 @@ namespace SystemMaintenance
 
         private string GetDetailedSystemInfo()
         {
-            try
-            {
-                string osName = "Unknown OS";
-                string totalRam = "Unknown RAM";
-                string cpuName = "Unknown CPU";
+            string osName = "Unknown OS";
+            string totalRam = "Unknown RAM";
+            string cpuName = "Unknown CPU";
 
-                using (var searcher = new ManagementObjectSearcher("SELECT Caption FROM Win32_OperatingSystem"))
-                {
-                    foreach (var item in searcher.Get()) { osName = item["Caption"].ToString(); break; }
+            try {
+                using (var searcher = new ManagementObjectSearcher("SELECT Caption FROM Win32_OperatingSystem")) {
+                    foreach (var item in searcher.Get()) { osName = item["Caption"]?.ToString() ?? osName; break; }
                 }
+            } catch { }
 
-                using (var searcher = new ManagementObjectSearcher("SELECT TotalVisibleMemorySize FROM Win32_OperatingSystem"))
-                {
-                    foreach (var item in searcher.Get())
-                    {
-                        long ramBytes = Convert.ToInt64(item["TotalVisibleMemorySize"]) * 1024;
-                        totalRam = Math.Round(ramBytes / (1024.0 * 1024.0 * 1024.0), 1) + " GB";
+            try {
+                using (var searcher = new ManagementObjectSearcher("SELECT TotalVisibleMemorySize FROM Win32_OperatingSystem")) {
+                    foreach (var item in searcher.Get()) {
+                        if (item["TotalVisibleMemorySize"] != null) {
+                            long ramBytes = Convert.ToInt64(item["TotalVisibleMemorySize"]) * 1024;
+                            totalRam = Math.Round(ramBytes / (1024.0 * 1024.0 * 1024.0), 1) + " GB";
+                        }
                         break;
                     }
                 }
+            } catch { }
 
-                using (var searcher = new ManagementObjectSearcher("SELECT Name FROM Win32_Processor"))
-                {
-                    foreach (var item in searcher.Get()) { cpuName = item["Name"].ToString(); break; }
+            try {
+                using (var searcher = new ManagementObjectSearcher("SELECT Name FROM Win32_Processor")) {
+                    foreach (var item in searcher.Get()) { cpuName = item["Name"]?.ToString() ?? cpuName; break; }
                 }
+            } catch { }
 
-                return $"{osName}\n{cpuName} | {totalRam} RAM";
-            }
-            catch
-            {
-                return $"OS: {Environment.OSVersion.VersionString} (WMI unavailable)";
-            }
+            return $"{osName}\n{cpuName} | {totalRam} RAM";
         }
 
         private void BuildTabs()
@@ -369,7 +378,7 @@ namespace SystemMaintenance
             btn.AccessibleName = script.DisplayName;
             btn.AccessibleDescription = script.Description + (script.IsDestructive ? " Warning: Destructive Action." : "");
 
-            // Batch Mode Checkbox (Hidden by default)
+            // Batch Mode Checkbox
             CheckBox chk = new CheckBox();
             chk.Tag = script;
             chk.Parent = btn;
@@ -379,9 +388,7 @@ namespace SystemMaintenance
             chk.BackColor = Color.Transparent;
             chk.CheckedChanged += (s, e) => UpdateBatchButton();
 
-            // Store ref to CheckBox in Button Tag? No, easier to just find it or make a custom control.
-            // Let's use a dictionary or just iterate controls.
-            script.BatchCheckBox = chk; // Link it back to info object (hacky but works if we add prop)
+            script.BatchCheckBox = chk;
 
             // Visual indicators
             if (script.IsDestructive) btn.ForeColor = Color.OrangeRed;
@@ -421,6 +428,8 @@ namespace SystemMaintenance
         {
             isBatchMode = chkBatchMode.Checked;
             btnRunBatch.Visible = isBatchMode;
+            btnSelectAll.Visible = isBatchMode;
+            btnSelectNone.Visible = isBatchMode;
 
             // Show/Hide Checkboxes
             foreach (var btn in allButtons)
@@ -428,9 +437,19 @@ namespace SystemMaintenance
                 ScriptInfo info = btn.Tag as ScriptInfo;
                 if (info != null && info.BatchCheckBox != null)
                 {
-                    // Only show checkbox if NOT interactive (Batch mode doesn't support interactive well)
-                    // Or maybe we allow it but it will pop up windows. Let's allow it but warn.
                     info.BatchCheckBox.Visible = isBatchMode;
+                }
+            }
+        }
+
+        private void SetAllBatchSelection(bool selected)
+        {
+            foreach (var btn in allButtons)
+            {
+                ScriptInfo info = btn.Tag as ScriptInfo;
+                if (info != null && info.BatchCheckBox != null && info.BatchCheckBox.Visible)
+                {
+                    info.BatchCheckBox.Checked = selected;
                 }
             }
         }
@@ -456,25 +475,41 @@ namespace SystemMaintenance
             batchCts = new CancellationTokenSource();
             btnRunBatch.Enabled = false;
             chkBatchMode.Enabled = false;
+            btnSelectAll.Enabled = false;
+            btnSelectNone.Enabled = false;
             btnCancel.Visible = true;
+
+            progressBar.Style = ProgressBarStyle.Continuous;
+            progressBar.Maximum = selectedScripts.Count;
+            progressBar.Value = 0;
+            progressBar.Visible = true;
 
             try
             {
+                int processed = 0;
                 foreach (var script in selectedScripts)
                 {
                     if (batchCts.Token.IsCancellationRequested) break;
 
-                    // Highlight current button?
-                    // Run script and WAIT
+                    statusLabel.Text = $"Running {processed + 1} of {selectedScripts.Count}: {script.DisplayName}";
                     await RunScriptAsync(script, batchCts.Token);
+                    processed++;
+                    progressBar.Value = processed;
                 }
             }
             finally
             {
                 btnRunBatch.Enabled = true;
                 chkBatchMode.Enabled = true;
+                btnSelectAll.Enabled = true;
+                btnSelectNone.Enabled = true;
                 btnCancel.Visible = false;
+                progressBar.Visible = false;
+                progressBar.Style = ProgressBarStyle.Marquee; // Reset style
+                statusLabel.Text = "Batch Execution Finished";
                 Log("--- Batch Execution Finished ---");
+
+                if (batchCts != null) { batchCts.Dispose(); batchCts = null; }
             }
         }
 
@@ -483,8 +518,15 @@ namespace SystemMaintenance
              string scriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "scripts", script.FileName);
              if (File.Exists(scriptPath))
              {
-                 Form viewer = new Form { Text = script.FileName, Size = new Size(600, 500), StartPosition = FormStartPosition.CenterParent };
-                 TextBox txt = new TextBox { Multiline = true, Dock = DockStyle.Fill, ScrollBars = ScrollBars.Vertical, ReadOnly = true, Font = new Font("Consolas", 10), Text = File.ReadAllText(scriptPath) };
+                 Form viewer = new Form { Text = script.FileName, Size = new Size(800, 600), StartPosition = FormStartPosition.CenterParent };
+                 TextBox txt = new TextBox {
+                     Multiline = true,
+                     Dock = DockStyle.Fill,
+                     ScrollBars = ScrollBars.Vertical,
+                     ReadOnly = true,
+                     Font = new Font("Consolas", 11),
+                     Text = File.ReadAllText(scriptPath)
+                 };
                  viewer.Controls.Add(txt);
                  viewer.ShowDialog();
              }
@@ -497,14 +539,29 @@ namespace SystemMaintenance
             FlowLayoutPanel panel = tabs.SelectedTab.Controls.OfType<FlowLayoutPanel>().FirstOrDefault();
             if (panel == null) return;
 
+            string[] tokens = string.IsNullOrWhiteSpace(query)
+                ? new string[0]
+                : query.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+
             panel.SuspendLayout();
             foreach (Control c in panel.Controls)
             {
                 if (c is Button btn && btn.Tag is ScriptInfo info)
                 {
-                    bool match = string.IsNullOrEmpty(query) ||
-                                 info.DisplayName.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                 info.Description.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0;
+                    bool match = true;
+                    if (tokens.Length > 0)
+                    {
+                        foreach (var token in tokens)
+                        {
+                            bool tokenMatch = info.DisplayName.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                              info.Description.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0;
+                            if (!tokenMatch)
+                            {
+                                match = false;
+                                break;
+                            }
+                        }
+                    }
                     c.Visible = match;
                 }
             }
@@ -537,69 +594,26 @@ namespace SystemMaintenance
             }
         }
 
-        // Wrapper for Async Batch
+        // --- Core Execution Logic ---
+
         private Task RunScriptAsync(ScriptInfo script, CancellationToken token)
         {
             return Task.Run(() => {
                 if (token.IsCancellationRequested) return;
 
-                // We need to run the logic of RunScript but blocking
-                // We'll reuse the logic but adapt it.
-                // Actually, RunScript is void. We need a Task returning version.
-
                 this.Invoke(new Action(() => {
-                     Log($"Starting Batch Item: {script.DisplayName}...");
-                     statusLabel.Text = $"Running: {script.DisplayName}";
-                     progressBar.Visible = true;
+                     Log($"Starting: {script.DisplayName}...");
+                     if (!progressBar.Visible) { // Only update if not controlled by batch loop
+                        statusLabel.Text = $"Running: {script.DisplayName}";
+                        progressBar.Visible = true;
+                     }
                 }));
 
-                string scriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "scripts", script.FileName);
-                if (!File.Exists(scriptPath)) return;
-
-                ProcessStartInfo psi = new ProcessStartInfo();
-                psi.FileName = "powershell.exe";
-
-                if (script.IsInteractive)
-                {
-                    // Interactive scripts in batch mode just pop up. We can't easily wait for them unless we use WaitForExit on the shell window, which is flaky.
-                    // We'll just launch and move on, or wait?
-                    // Let's wait.
-                    psi.Arguments = $"-NoProfile -ExecutionPolicy Bypass -NoExit -File \"{scriptPath}\"";
-                    psi.UseShellExecute = true;
-                    // Cannot wait effectively for UseShellExecute=true often, but Process.Start returns a handle.
-                }
-                else
-                {
-                    psi.Arguments = $"-NoProfile -ExecutionPolicy Bypass -NonInteractive -File \"{scriptPath}\"";
-                    psi.RedirectStandardOutput = true;
-                    psi.RedirectStandardError = true;
-                    psi.UseShellExecute = false;
-                    psi.CreateNoWindow = true;
-                }
-
-                using (Process p = new Process())
-                {
-                    lock (processLock) { currentProcess = p; }
-                    p.StartInfo = psi;
-
-                    if (!script.IsInteractive) {
-                        p.OutputDataReceived += (s, e) => { if (e.Data != null) Log(e.Data); };
-                        p.ErrorDataReceived += (s, e) => { if (e.Data != null) Log("ERR: " + e.Data); };
-                    }
-
-                    p.Start();
-                    if (!script.IsInteractive) {
-                        p.BeginOutputReadLine();
-                        p.BeginErrorReadLine();
-                    }
-
-                    p.WaitForExit();
-                    lock (processLock) { currentProcess = null; }
-                }
+                ExecuteScriptInternal(script);
 
                 this.Invoke(new Action(() => {
                      Log($"Completed: {script.DisplayName}");
-                     statusLabel.Text = "Ready";
+                     if (!isBatchMode) statusLabel.Text = "Ready";
                 }));
             });
         }
@@ -617,18 +631,32 @@ namespace SystemMaintenance
             progressBar.Visible = true;
             btnCancel.Visible = !script.IsInteractive;
 
+            System.Threading.Tasks.Task.Run(() => {
+                ExecuteScriptInternal(script);
+                this.Invoke(new Action(() => {
+                    Log($"Finished: {script.DisplayName}");
+                    Log("------------------------------------------------");
+                    statusLabel.Text = "Ready";
+                    progressBar.Visible = false;
+                    btnCancel.Visible = false;
+                }));
+            });
+        }
+
+        private void ExecuteScriptInternal(ScriptInfo script)
+        {
             string scriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "scripts", script.FileName);
             if (!File.Exists(scriptPath))
             {
+                // Fallback for root path
                 scriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, script.FileName);
             }
 
             if (!File.Exists(scriptPath))
             {
-                Log($"Error: Script file not found: {script.FileName}");
-                statusLabel.Text = "Error: File not found";
-                progressBar.Visible = false;
-                btnCancel.Visible = false;
+                this.Invoke(new Action(() => {
+                    Log($"Error: Script file not found: {script.FileName}");
+                }));
                 return;
             }
 
@@ -642,11 +670,11 @@ namespace SystemMaintenance
                     psi.Arguments = $"-NoProfile -ExecutionPolicy Bypass -NoExit -File \"{scriptPath}\"";
                     psi.UseShellExecute = true;
 
+                    // Interactive scripts cannot be tracked easily for output in the same way
                     Process.Start(psi);
-                    Log($"Launched {script.DisplayName} in external window.");
-                    statusLabel.Text = "Ready";
-                    progressBar.Visible = false;
-                    btnCancel.Visible = false;
+                    this.Invoke(new Action(() => {
+                        Log($"Launched {script.DisplayName} in external window.");
+                    }));
                 }
                 else
                 {
@@ -656,36 +684,26 @@ namespace SystemMaintenance
                     psi.UseShellExecute = false;
                     psi.CreateNoWindow = true;
 
-                    System.Threading.Tasks.Task.Run(() => {
-                        using (Process p = new Process())
-                        {
-                            lock (processLock) { currentProcess = p; }
-                            p.StartInfo = psi;
-                            p.OutputDataReceived += (s, e) => { if (e.Data != null) Log(e.Data); };
-                            p.ErrorDataReceived += (s, e) => { if (e.Data != null) Log("ERR: " + e.Data); };
+                    using (Process p = new Process())
+                    {
+                        lock (processLock) { currentProcess = p; }
+                        p.StartInfo = psi;
+                        p.OutputDataReceived += (s, e) => { if (e.Data != null) Log(e.Data); };
+                        p.ErrorDataReceived += (s, e) => { if (e.Data != null) Log("ERR: " + e.Data); };
 
-                            p.Start();
-                            p.BeginOutputReadLine();
-                            p.BeginErrorReadLine();
-                            p.WaitForExit();
-
-                            this.Invoke(new Action(() => {
-                                Log($"Finished: {script.DisplayName}");
-                                Log("------------------------------------------------");
-                                statusLabel.Text = "Ready";
-                                progressBar.Visible = false;
-                                btnCancel.Visible = false;
-                                lock (processLock) { currentProcess = null; }
-                            }));
-                        }
-                    });
+                        p.Start();
+                        p.BeginOutputReadLine();
+                        p.BeginErrorReadLine();
+                        p.WaitForExit();
+                        lock (processLock) { currentProcess = null; }
+                    }
                 }
             }
             catch (Exception ex)
             {
-                Log($"Error executing script: {ex.Message}");
-                progressBar.Visible = false;
-                btnCancel.Visible = false;
+                this.Invoke(new Action(() => {
+                    Log($"Error executing script: {ex.Message}");
+                }));
             }
         }
 
@@ -695,12 +713,17 @@ namespace SystemMaintenance
 
             // UI Thread
             if (txtLog.InvokeRequired) { txtLog.Invoke(new Action<string>(Log), msg); return; }
+
             txtLog.AppendText(line + "\r\n");
+
+            // Auto-scroll
+            txtLog.SelectionStart = txtLog.Text.Length;
+            txtLog.ScrollToCaret();
 
             // File Log (Simple append)
             try {
                 string logDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs");
-                Directory.CreateDirectory(logDir);
+                if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
                 File.AppendAllText(Path.Combine(logDir, $"log_{DateTime.Now:yyyyMMdd}.txt"), line + Environment.NewLine);
             } catch { }
         }

@@ -4,19 +4,22 @@ Write-Header "Installing Advanced Cleaning Tools via Winget"
 
 # Check if Winget is installed
 if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
-    Write-Host "Winget not found. Attempting to install App Installer..." -ForegroundColor Yellow
-    # This is tricky to script reliably without interaction, but we warn the user.
-    Write-Host "Please install 'App Installer' from the Microsoft Store." -ForegroundColor Red
+    Write-Log "Winget not found. Attempting to install App Installer..." "Yellow"
+    Write-Log "Winget is required for this script. Please install 'App Installer' from the Microsoft Store or update Windows." "Red"
+    Write-Log "Visit: https://aka.ms/getwinget" "Cyan"
+    if (-not [Console]::IsInputRedirected) { Pause }
     return
 }
 
 # 1. Malwarebytes
-Write-Host "Installing Malwarebytes..." -ForegroundColor Yellow
+Write-Log "Installing Malwarebytes..."
 winget install --id Malwarebytes.Malwarebytes -e --silent --accept-package-agreements --accept-source-agreements
 
 # 2. BleachBit
-Write-Host "Installing BleachBit..." -ForegroundColor Yellow
+Write-Log "Installing BleachBit..."
 winget install --id BleachBit.BleachBit -e --silent --accept-package-agreements --accept-source-agreements
 
-Write-Host "--- Installation Complete ---" -ForegroundColor Green
-Write-Host "ACTION REQUIRED: Please open 'Malwarebytes' manually and run a scan now." -ForegroundColor Magenta
+Write-Log "--- Installation Complete ---" "Green"
+Write-Log "ACTION REQUIRED: Please open 'Malwarebytes' manually and run a scan now." "Magenta"
+
+Pause-If-Interactive
