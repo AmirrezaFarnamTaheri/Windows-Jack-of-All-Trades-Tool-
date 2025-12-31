@@ -1,4 +1,11 @@
 # Ultimate System Maintenance Menu
+# Check for Administrator privileges
+if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]"Administrator")) {
+    Write-Host "Error: This script requires Administrator privileges." -ForegroundColor Red
+    Write-Host "Please run PowerShell as Administrator." -ForegroundColor Yellow
+    if (-not [Console]::IsInputRedirected) { Pause }
+    Exit
+}
 # Auto-detects scripts in the current folder
 $ScriptPath = $PSScriptRoot
 
@@ -111,7 +118,9 @@ function Show-SubMenu ($Category) {
     $choice = Read-Host "Enter Script Number"
     if ($choice -eq 'B' -or $choice -eq 'b') { return }
     Run-Script $choice
+if (-not [Console]::IsInputRedirected) {
     Pause
+}
 }
 
 # Main Loop

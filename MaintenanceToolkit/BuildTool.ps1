@@ -3,6 +3,7 @@ Write-Host "--- Building System Maintenance GUI ---" -ForegroundColor Cyan
 # Define filenames
 $SourceFile = ".\source\MaintenanceTool.cs"
 $OutputFile = ".\MaintenanceTool.exe"
+$ManifestFile = ".\app.manifest"
 
 # Check if source exists
 if (-not (Test-Path $SourceFile)) {
@@ -23,8 +24,8 @@ if (-not $CSC) {
 Write-Host "Using Compiler: $($CSC.FullName)" -ForegroundColor DarkGray
 
 # Compile Command
-# We link Windows Forms and Drawing libraries so the GUI works
-$BuildCmd = "& '$($CSC.FullName)' /target:winexe /out:'$OutputFile' /r:System.Windows.Forms.dll /r:System.Drawing.dll '$SourceFile'"
+# We link Windows Forms, Drawing, System.Management (for WMI checks), and the Manifest
+$BuildCmd = "& '$($CSC.FullName)' /target:winexe /out:'$OutputFile' /win32manifest:'$ManifestFile' /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Management.dll '$SourceFile'"
 
 Invoke-Expression $BuildCmd
 

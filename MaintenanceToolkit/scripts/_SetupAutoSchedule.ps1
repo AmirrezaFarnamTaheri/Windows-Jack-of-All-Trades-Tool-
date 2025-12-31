@@ -1,3 +1,10 @@
+# Check for Administrator privileges
+if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]"Administrator")) {
+    Write-Host "Error: This script requires Administrator privileges." -ForegroundColor Red
+    Write-Host "Please run PowerShell as Administrator." -ForegroundColor Yellow
+    if (-not [Console]::IsInputRedirected) { Pause }
+    Exit
+}
 $TaskName = "SundayNightMaintenance"
 # Use relative path if possible, but Task Scheduler needs absolute.
 # We assume the user runs this setup script from the toolkit folder.
@@ -9,7 +16,9 @@ Write-Host "--- Creating Scheduled Task: $TaskName ---" -ForegroundColor Cyan
 if (-not (Test-Path $ScriptPath)) {
     Write-Host "ERROR: Could not find $ScriptPath" -ForegroundColor Red
     Write-Host "Please ensure you run this script from the MaintenanceToolkit folder." -ForegroundColor Yellow
+if (-not [Console]::IsInputRedirected) {
     Pause
+}
     Exit
 }
 
@@ -33,5 +42,6 @@ catch {
     Write-Host "Error creating task: $($_.Exception.Message)" -ForegroundColor Red
     Write-Host "Try running this script as Administrator." -ForegroundColor Magenta
 }
-
-Pause
+if (-not [Console]::IsInputRedirected) {
+    Pause
+}
