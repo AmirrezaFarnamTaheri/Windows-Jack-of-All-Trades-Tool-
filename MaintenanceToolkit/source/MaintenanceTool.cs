@@ -4,31 +4,44 @@ using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Linq;
-using System.Management; // Need reference to System.Management
+using System.Management;
 using System.Security.Principal;
 using System.Windows.Forms;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace SystemMaintenance
 {
     public class MainForm : Form
     {
+        // UI Controls
         private TextBox txtLog;
         private TabControl tabs;
         private StatusStrip statusStrip;
         private ToolStripStatusLabel statusLabel;
-        private bool isDarkMode = false;
+        private ToolStripProgressBar progressBar;
         private List<Button> allButtons = new List<Button>();
         private TextBox txtSearch;
         private Panel descPanel;
         private Label lblDescTitle;
         private Label lblDescText;
         private SplitContainer splitContainer;
+        private Button btnCancel;
+        private Button btnDarkMode;
+
+        // State
+        private bool isDarkMode = false;
+        private Process currentProcess;
+        private object processLock = new object();
+        private const string SETTINGS_FILE = "settings.cfg";
 
         public MainForm()
         {
+            LoadSettings();
+
             // --- UI Setup ---
             this.Text = "Ultimate System Maintenance Toolkit";
-            this.Size = new Size(1100, 750);
+            this.Size = new Size(1150, 800);
             this.StartPosition = FormStartPosition.CenterScreen;
             this.Icon = SystemIcons.Shield;
             this.Font = new Font("Segoe UI", 9F, FontStyle.Regular);
@@ -39,8 +52,8 @@ namespace SystemMaintenance
                 MessageBox.Show("Please restart this application as Administrator for full functionality.", "Admin Rights Needed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
 
-            // --- Header (System Info) ---
-            Panel headerPanel = new Panel { Dock = DockStyle.Top, Height = 70, Padding = new Padding(15) };
+            // --- Header (System Info & Search) ---
+            Panel headerPanel = new Panel { Dock = DockStyle.Top, Height = 80, Padding = new Padding(15) };
 
             Label lblSysInfo = new Label {
                 Text = GetDetailedSystemInfo(),
@@ -50,50 +63,58 @@ namespace SystemMaintenance
                 AutoEllipsis = true
             };
 
-            // Search Box in Header
-            Panel searchContainer = new Panel { Dock = DockStyle.Right, Width = 250, Padding = new Padding(0, 10, 0, 0) };
-            txtSearch = new TextBox { Dock = DockStyle.Top, Font = new Font("Segoe UI", 10F) };
-            // Placeholder text hack/workaround or just a label
-            Label lblSearch = new Label { Text = "Search Tools:", Dock = DockStyle.Top, Height = 20, TextAlign = ContentAlignment.BottomLeft };
+            // Search Container
+            Panel rightHeader = new Panel { Dock = DockStyle.Right, Width = 350 };
 
+            // Search Box
+            GroupBox searchGroup = new GroupBox { Text = "Search Tools", Dock = DockStyle.Top, Height = 50 };
+            txtSearch = new TextBox { Dock = DockStyle.Fill, BorderStyle = BorderStyle.None, Font = new Font("Segoe UI", 11F) };
             txtSearch.TextChanged += TxtSearch_TextChanged;
+            searchGroup.Controls.Add(txtSearch);
+            // Padding for textbox inside groupbox
+            txtSearch.Location = new Point(5, 18);
+            txtSearch.Width = 340;
+            txtSearch.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top;
 
-            searchContainer.Controls.Add(txtSearch);
-            searchContainer.Controls.Add(lblSearch);
-            // Reverse order for Dock.Top: Last added is at bottom of stack (closest to center), First added is at Top edge.
-            // Wait, WinForms Docking: First control added to collection takes the edge.
-            // So Add(lblSearch) -> Top. Add(txtSearch) -> Under Label.
-            // Let's clear and re-add in correct order for safety.
-            searchContainer.Controls.Clear();
-            searchContainer.Controls.Add(txtSearch); // Second (Below)
-            searchContainer.Controls.Add(lblSearch); // First (Top)
+            // Help Button
+            Button btnHelp = new Button { Text = "Help / About", Dock = DockStyle.Bottom, Height = 25, FlatStyle = FlatStyle.Flat };
+            btnHelp.Click += (s, e) => ShowHelp();
+
+            rightHeader.Controls.Add(searchGroup);
+            rightHeader.Controls.Add(new Panel { Dock = DockStyle.Top, Height = 5 }); // Spacer
+            rightHeader.Controls.Add(btnHelp);
 
             headerPanel.Controls.Add(lblSysInfo);
-            headerPanel.Controls.Add(searchContainer);
+            headerPanel.Controls.Add(rightHeader);
 
             // --- Main Split Container ---
-            splitContainer = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, SplitterDistance = 450, FixedPanel = FixedPanel.Panel2 };
+            splitContainer = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, SplitterDistance = 500, FixedPanel = FixedPanel.Panel2 };
 
             // --- Tabs (Top Half) ---
-            tabs = new TabControl { Dock = DockStyle.Fill, Padding = new Point(10, 5) };
+            tabs = new TabControl { Dock = DockStyle.Fill, Padding = new Point(12, 6), ItemSize = new Size(100, 30) };
             BuildTabs();
-            tabs.SelectedIndexChanged += (s, e) => FilterButtons(txtSearch.Text); // Re-apply search on tab switch
+            tabs.SelectedIndexChanged += (s, e) => FilterButtons(txtSearch.Text);
 
             // --- Description Panel ---
-            descPanel = new Panel { Dock = DockStyle.Bottom, Height = 70, Padding = new Padding(10) };
+            descPanel = new Panel { Dock = DockStyle.Bottom, Height = 80, Padding = new Padding(10), BorderStyle = BorderStyle.FixedSingle };
             lblDescTitle = new Label { Dock = DockStyle.Top, Height = 25, Font = new Font("Segoe UI", 11F, FontStyle.Bold), Text = "Hover over a tool to see details." };
-            lblDescText = new Label { Dock = DockStyle.Fill, Text = "", Font = new Font("Segoe UI", 9F) };
+            lblDescText = new Label { Dock = DockStyle.Fill, Text = "", Font = new Font("Segoe UI", 9.5F) };
             descPanel.Controls.Add(lblDescText);
             descPanel.Controls.Add(lblDescTitle);
 
             Panel topContainer = new Panel { Dock = DockStyle.Fill };
             topContainer.Controls.Add(tabs);
             topContainer.Controls.Add(descPanel);
-
             splitContainer.Panel1.Controls.Add(topContainer);
 
             // --- Logs (Bottom Half) ---
             GroupBox grpLog = new GroupBox { Text = "Activity Log", Dock = DockStyle.Fill, Padding = new Padding(10) };
+
+            Panel logControls = new Panel { Dock = DockStyle.Right, Width = 100 };
+            btnCancel = new Button { Text = "Cancel Script", Dock = DockStyle.Top, Height = 40, BackColor = Color.Firebrick, ForeColor = Color.White, Visible = false, FlatStyle = FlatStyle.Flat };
+            btnCancel.Click += BtnCancel_Click;
+            logControls.Controls.Add(btnCancel);
+
             txtLog = new TextBox {
                 Multiline = true,
                 ScrollBars = ScrollBars.Vertical,
@@ -103,16 +124,20 @@ namespace SystemMaintenance
                 ForeColor = Color.LimeGreen,
                 Font = new Font("Consolas", 10)
             };
+
             grpLog.Controls.Add(txtLog);
+            grpLog.Controls.Add(logControls);
             splitContainer.Panel2.Controls.Add(grpLog);
 
             // --- Status Strip ---
             statusStrip = new StatusStrip();
-            statusLabel = new ToolStripStatusLabel("Ready");
+            statusLabel = new ToolStripStatusLabel("Ready") { Spring = true, TextAlign = ContentAlignment.MiddleLeft };
+            progressBar = new ToolStripProgressBar { Visible = false, Style = ProgressBarStyle.Marquee };
             statusStrip.Items.Add(statusLabel);
+            statusStrip.Items.Add(progressBar);
 
             // Dark Mode Toggle
-            Button btnDarkMode = new Button { Text = "Toggle Dark Mode", Dock = DockStyle.Bottom, Height = 35, FlatStyle = FlatStyle.Flat };
+            btnDarkMode = new Button { Text = "Toggle Dark Mode", Dock = DockStyle.Bottom, Height = 35, FlatStyle = FlatStyle.Flat };
             btnDarkMode.Click += (s, e) => ToggleTheme();
 
             // Assemble Form
@@ -124,6 +149,48 @@ namespace SystemMaintenance
             ApplyTheme();
         }
 
+        private void LoadSettings()
+        {
+            try
+            {
+                if (File.Exists(SETTINGS_FILE))
+                {
+                    string content = File.ReadAllText(SETTINGS_FILE);
+                    isDarkMode = content.Contains("DarkMode=True");
+                }
+            }
+            catch { /* Ignore errors */ }
+        }
+
+        private void SaveSettings()
+        {
+            try
+            {
+                File.WriteAllText(SETTINGS_FILE, $"DarkMode={isDarkMode}");
+            }
+            catch { /* Ignore */ }
+        }
+
+        private void ShowHelp()
+        {
+            string helpText =
+                "Ultimate System Maintenance Toolkit\n" +
+                "Version: 65\n\n" +
+                "CATEGORIES:\n" +
+                "- CLEAN: Free up disk space.\n" +
+                "- REPAIR: Fix Windows issues (Updates, SFC, etc).\n" +
+                "- HARDWARE: Diagnostics (RAM, Battery, CPU).\n" +
+                "- NETWORK: Internet optimization and troubleshooting.\n" +
+                "- SECURITY: Privacy hardening and audits.\n" +
+                "- UTILS: General tools (Backup, Updates).\n\n" +
+                "SYMBOLS:\n" +
+                "(!) - Destructive Action (Warning)\n" +
+                " *  - Interactive (Opens new window)\n\n" +
+                "Note: All scripts run with Administrator privileges.";
+
+            MessageBox.Show(helpText, "Help / About", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
         private string GetDetailedSystemInfo()
         {
             try
@@ -132,13 +199,11 @@ namespace SystemMaintenance
                 string totalRam = "Unknown RAM";
                 string cpuName = "Unknown CPU";
 
-                // OS
                 using (var searcher = new ManagementObjectSearcher("SELECT Caption FROM Win32_OperatingSystem"))
                 {
                     foreach (var item in searcher.Get()) { osName = item["Caption"].ToString(); break; }
                 }
 
-                // RAM
                 using (var searcher = new ManagementObjectSearcher("SELECT TotalVisibleMemorySize FROM Win32_OperatingSystem"))
                 {
                     foreach (var item in searcher.Get())
@@ -149,7 +214,6 @@ namespace SystemMaintenance
                     }
                 }
 
-                // CPU
                 using (var searcher = new ManagementObjectSearcher("SELECT Name FROM Win32_Processor"))
                 {
                     foreach (var item in searcher.Get()) { cpuName = item["Name"].ToString(); break; }
@@ -159,7 +223,7 @@ namespace SystemMaintenance
             }
             catch
             {
-                return $"OS: {Environment.OSVersion.VersionString} (WMI Error)";
+                return $"OS: {Environment.OSVersion.VersionString} (WMI unavailable)";
             }
         }
 
@@ -174,9 +238,9 @@ namespace SystemMaintenance
             categories["CLEAN"].Add(new ScriptInfo("2_InstallCleaningTools.ps1", "Install Cleaners", "Installs Malwarebytes and BleachBit via Winget."));
             categories["CLEAN"].Add(new ScriptInfo("4_DeepCleanDisk.ps1", "Deep Disk Cleanup", "Runs Windows Disk Cleanup with advanced options."));
             categories["CLEAN"].Add(new ScriptInfo("5_SafeDebloat.ps1", "Safe Debloat", "Removes common bloatware apps safely."));
-            categories["CLEAN"].Add(new ScriptInfo("13_NuclearTempClean.ps1", "Nuclear Temp Clean", "Aggressively cleans temporary files.", false, true)); // Destructive
+            categories["CLEAN"].Add(new ScriptInfo("13_NuclearTempClean.ps1", "Nuclear Temp Clean", "Aggressively cleans temporary files.", false, true));
             categories["CLEAN"].Add(new ScriptInfo("35_ListRecycleBin.ps1", "Scan Recycle Bin", "Lists hidden deleted files in Recycle Bin."));
-            categories["CLEAN"].Add(new ScriptInfo("45_DeleteEmptyFolders.ps1", "Delete Empty Folders", "Recursively deletes empty directories.", true, true)); // Destructive + Interactive
+            categories["CLEAN"].Add(new ScriptInfo("45_DeleteEmptyFolders.ps1", "Delete Empty Folders", "Recursively deletes empty directories.", true, true));
             categories["CLEAN"].Add(new ScriptInfo("50_FindDuplicates.ps1", "Find Duplicates", "Finds duplicate files by content hash.", true));
 
             // REPAIR
@@ -225,7 +289,7 @@ namespace SystemMaintenance
             categories["SECURITY"].Add(new ScriptInfo("32_VerifyFileHash.ps1", "Verify File Hash", "Calculates SHA256 hash of a file.", true));
             categories["SECURITY"].Add(new ScriptInfo("42_AuditNonMsServices.ps1", "Audit Services", "Lists non-Microsoft running services."));
             categories["SECURITY"].Add(new ScriptInfo("48_AuditUserAccounts.ps1", "Audit Users", "Lists local user accounts."));
-            categories["SECURITY"].Add(new ScriptInfo("49_SecureDelete.ps1", "Secure Delete", "Wipes a file (3 passes).", true, true)); // Destructive + Interactive
+            categories["SECURITY"].Add(new ScriptInfo("49_SecureDelete.ps1", "Secure Delete", "Wipes a file (3 passes).", true, true));
             categories["SECURITY"].Add(new ScriptInfo("59_PanicButton.ps1", "Panic Button", "Mutes, clears clipboard, minimizes all."));
 
             // UTILS
@@ -243,10 +307,9 @@ namespace SystemMaintenance
             categories["UTILS"].Add(new ScriptInfo("54_SleepTimer.ps1", "Sleep Timer", "Sets a shutdown timer.", true));
             categories["UTILS"].Add(new ScriptInfo("55_ToggleDarkMode.ps1", "Toggle System Dark Mode", "Toggles Windows Theme."));
             categories["UTILS"].Add(new ScriptInfo("57_TurnOffMonitor.ps1", "Turn Off Monitor", "Turns off display signal."));
-            categories["UTILS"].Add(new ScriptInfo("60_EmergencyRestart.ps1", "Emergency Restart", "Forces immediate reboot.", true, true)); // Destructive + Interactive
+            categories["UTILS"].Add(new ScriptInfo("60_EmergencyRestart.ps1", "Emergency Restart", "Forces immediate reboot.", true, true));
             categories["UTILS"].Add(new ScriptInfo("61_CheckActivation.ps1", "Check Activation", "Checks license expiry."));
             categories["UTILS"].Add(new ScriptInfo("63_InstallEssentials.ps1", "Install Essentials", "Installs Chrome, VLC, 7Zip, etc."));
-
 
             foreach (var cat in categories)
             {
@@ -275,37 +338,34 @@ namespace SystemMaintenance
             Button btn = new Button();
             btn.Text = script.DisplayName;
             btn.Tag = script;
-            btn.Width = 220;
-            btn.Height = 65;
+            btn.Width = 240;
+            btn.Height = 75;
             btn.Margin = new Padding(8);
             btn.FlatStyle = FlatStyle.Flat;
             btn.TextAlign = ContentAlignment.MiddleLeft;
 
             // Accessibility
             btn.AccessibleName = script.DisplayName;
-            btn.AccessibleDescription = script.Description;
+            btn.AccessibleDescription = script.Description + (script.IsDestructive ? " Warning: Destructive Action." : "");
 
             // Visual indicators
             if (script.IsDestructive) btn.ForeColor = Color.OrangeRed;
             if (script.IsInteractive) btn.Text += " *";
             if (script.IsDestructive) btn.Text += " (!)";
 
-            // Description Hover
             btn.MouseEnter += (s, e) => {
                 lblDescTitle.Text = script.DisplayName;
                 lblDescText.Text = script.Description;
-                if (script.IsInteractive) lblDescText.Text += " [Opens separate window]";
-                if (script.IsDestructive) lblDescText.Text += " [WARNING: Destructive Action]";
+                if (script.IsInteractive) lblDescText.Text += "\n[Opens separate window]";
+                if (script.IsDestructive) lblDescText.Text += "\n[WARNING: This action cannot be undone]";
             };
 
             btn.Click += (s, e) => {
-                // Safe Mode Check (Explicit flag)
                 if (script.IsDestructive)
                 {
                     var result = MessageBox.Show($"Warning: {script.DisplayName} will permanently modify or delete data.\n\nAre you sure you want to proceed?", "Safety Check", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
                     if (result == DialogResult.No) return;
                 }
-
                 RunScript(script);
             };
 
@@ -338,12 +398,38 @@ namespace SystemMaintenance
             FilterButtons(txtSearch.Text);
         }
 
+        private void BtnCancel_Click(object sender, EventArgs e)
+        {
+            lock (processLock)
+            {
+                if (currentProcess != null && !currentProcess.HasExited)
+                {
+                    try
+                    {
+                        currentProcess.Kill();
+                        Log("Process cancelled by user.");
+                    }
+                    catch (Exception ex)
+                    {
+                        Log($"Error cancelling process: {ex.Message}");
+                    }
+                }
+            }
+        }
+
         private void RunScript(ScriptInfo script)
         {
+            if (currentProcess != null && !currentProcess.HasExited)
+            {
+                MessageBox.Show("A script is already running. Please wait or cancel it.", "Busy", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
             Log($"Starting: {script.DisplayName}...");
             statusLabel.Text = $"Running: {script.DisplayName}";
+            progressBar.Visible = true;
+            btnCancel.Visible = !script.IsInteractive;
 
-            // Locate script
             string scriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "scripts", script.FileName);
             if (!File.Exists(scriptPath))
             {
@@ -354,6 +440,8 @@ namespace SystemMaintenance
             {
                 Log($"Error: Script file not found: {script.FileName}");
                 statusLabel.Text = "Error: File not found";
+                progressBar.Visible = false;
+                btnCancel.Visible = false;
                 return;
             }
 
@@ -366,11 +454,12 @@ namespace SystemMaintenance
                 {
                     psi.Arguments = $"-NoProfile -ExecutionPolicy Bypass -NoExit -File \"{scriptPath}\"";
                     psi.UseShellExecute = true;
-                    psi.CreateNoWindow = false;
 
                     Process.Start(psi);
                     Log($"Launched {script.DisplayName} in external window.");
                     statusLabel.Text = "Ready";
+                    progressBar.Visible = false;
+                    btnCancel.Visible = false;
                 }
                 else
                 {
@@ -383,6 +472,7 @@ namespace SystemMaintenance
                     System.Threading.Tasks.Task.Run(() => {
                         using (Process p = new Process())
                         {
+                            lock (processLock) { currentProcess = p; }
                             p.StartInfo = psi;
                             p.OutputDataReceived += (s, e) => { if (e.Data != null) Log(e.Data); };
                             p.ErrorDataReceived += (s, e) => { if (e.Data != null) Log("ERR: " + e.Data); };
@@ -396,6 +486,9 @@ namespace SystemMaintenance
                                 Log($"Finished: {script.DisplayName}");
                                 Log("------------------------------------------------");
                                 statusLabel.Text = "Ready";
+                                progressBar.Visible = false;
+                                btnCancel.Visible = false;
+                                lock (processLock) { currentProcess = null; }
                             }));
                         }
                     });
@@ -404,6 +497,8 @@ namespace SystemMaintenance
             catch (Exception ex)
             {
                 Log($"Error executing script: {ex.Message}");
+                progressBar.Visible = false;
+                btnCancel.Visible = false;
             }
         }
 
@@ -416,6 +511,7 @@ namespace SystemMaintenance
         private void ToggleTheme()
         {
             isDarkMode = !isDarkMode;
+            SaveSettings();
             ApplyTheme();
         }
 
@@ -446,7 +542,6 @@ namespace SystemMaintenance
             foreach (Button btn in allButtons)
             {
                 btn.BackColor = btnBack;
-                // Keep destructive buttons red/orange text
                 if (((ScriptInfo)btn.Tag).IsDestructive)
                     btn.ForeColor = isDarkMode ? Color.LightCoral : Color.Red;
                 else

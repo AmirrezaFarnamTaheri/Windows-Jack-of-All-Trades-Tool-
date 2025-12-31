@@ -1,0 +1,36 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v1.1
+
+    - name: Build Application
+      run: |
+        cd MaintenanceToolkit
+        ./BuildTool.ps1
+      shell: powershell
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: MaintenanceTool
+        path: MaintenanceToolkit/MaintenanceTool.exe
+
+    - name: Create Release
+      if: startsWith(github.ref, 'refs/tags/v')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: MaintenanceToolkit/MaintenanceTool.exe
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
