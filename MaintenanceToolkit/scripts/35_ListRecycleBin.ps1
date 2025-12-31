@@ -2,15 +2,21 @@
 Assert-Admin
 Write-Header "Scanning Recycle Bin"
 
-$drives = Get-PSDrive -PSProvider FileSystem
-foreach ($d in $drives) {
-    $binPath = "$($d.Root)\`$Recycle.Bin"
-    if (Test-Path $binPath) {
-        Get-ChildItem -Path $binPath -Recurse -Force -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -like "$I*" } |
-        ForEach-Object {
-            Write-Host "Found deleted item: $($_.Name) in $($d.Root)" -ForegroundColor White
-        }
+try {
+    $shell = New-Object -ComObject Shell.Application
+    $bin = $shell.Namespace(0xA) # 0xA is Recycle Bin
+
+    $items = $bin.Items()
+    Write-Log "Found $($items.Count) items in Recycle Bin." "Cyan"
+
+    foreach ($item in $items) {
+        Write-Log " - $($item.Name) ($($item.Path))" "White"
     }
+
+    if ($items.Count -gt 0) {
+        Write-Log "`nTo empty the Recycle Bin, right-click it on your Desktop." "Yellow"
+    }
+} catch {
+    Write-Log "Error scanning Recycle Bin: $($_.Exception.Message)" "Red"
 }
-Write-Host "Use a dedicated recovery tool (like Recuva) to restore these." -ForegroundColor Yellow
+Pause-If-Interactive

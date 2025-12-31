@@ -1,15 +1,19 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
-Write-Header "Fix 'Access Denied' Errors"
-$path = Read-Host "Enter folder path to unlock"
-$path = $path -replace '"', ''
+Write-Header "Take Ownership of File/Folder"
+$target = Read-Host "Enter file or folder path"
 
-if (Test-Path $path) {
-    Write-Host "Taking Ownership..." -ForegroundColor Yellow
-    takeown /f "$path" /r /d y
-
-    Write-Host "Granting Permissions..." -ForegroundColor Yellow
-    icacls "$path" /grant "$($env:USERNAME):(OI)(CI)F" /t
-
-    Write-Host "Folder Unlocked." -ForegroundColor Green
+try {
+    if (Test-Path $target) {
+        Write-Log "Taking ownership..."
+        takeown /f "$target" /r /d y
+        Write-Log "Granting permissions..."
+        icacls "$target" /grant Administrators:F /t
+        Write-Log "Ownership taken." "Green"
+    } else {
+        Write-Log "Path not found." "Red"
+    }
+} catch {
+    Write-Log "Error: $($_.Exception.Message)" "Red"
 }
+Pause-If-Interactive

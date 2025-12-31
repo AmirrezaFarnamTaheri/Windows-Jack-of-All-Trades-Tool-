@@ -1,56 +1,27 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
-Write-Header "Benchmarking DNS Servers"
-
-if (-not (Test-IsConnected)) {
-    Write-Log "Error: No internet connection detected. Cannot benchmark DNS." "Red"
-    Pause-If-Interactive
-    Exit
-}
-
-Write-Log "Testing response times (Average of 3 queries)..." "Yellow"
+Write-Header "DNS Speed Benchmark"
 
 $targets = @{
-    "Google Primary   " = "8.8.8.8"
-    "Google Secondary " = "8.8.4.4"
-    "Cloudflare Pri   " = "1.1.1.1"
-    "Cloudflare Sec   " = "1.0.0.1"
-    "OpenDNS Home     " = "208.67.222.222"
-    "Quad9 Secure     " = "9.9.9.9"
-    "AdGuard DNS      " = "94.140.14.14"
+    "Google" = "8.8.8.8"
+    "Cloudflare" = "1.1.1.1"
+    "OpenDNS" = "208.67.222.222"
+    "Quad9" = "9.9.9.9"
 }
 
-$results = @()
+Write-Log "Pinging DNS Providers (Average of 5 pings)..."
 
-foreach ($key in $targets.Keys) {
-    $ip = $targets[$key]
-    $totalTime = 0
-    $failures = 0
-    $attempts = 3
-
-    Write-Host -NoNewline "Testing $key ($ip)... "
-
-    for ($i = 0; $i -lt $attempts; $i++) {
-        try {
-            $time = (Measure-Command {
-                Resolve-DnsName -Name "google.com" -Server $ip -Type A -ErrorAction Stop
-            }).TotalMilliseconds
-            $totalTime += $time
-        } catch {
-            $failures++
+foreach ($name in $targets.Keys) {
+    try {
+        $ip = $targets[$name]
+        $ping = Test-Connection -ComputerName $ip -Count 5 -ErrorAction SilentlyContinue | Measure-Object -Property ResponseTime -Average
+        if ($ping) {
+            Write-Log "$name ($ip): $([math]::Round($ping.Average)) ms" "White"
+        } else {
+            Write-Log "$name ($ip): Timeout" "Red"
         }
-    }
-
-    if ($failures -eq $attempts) {
-        Write-Host "TIMEOUT" -ForegroundColor Red
-    } else {
-        $avg = [math]::Round($totalTime / ($attempts - $failures), 2)
-        Write-Host "$avg ms" -ForegroundColor Green
-        $results += [PSCustomObject]@{ Provider = $key; IP = $ip; TimeMs = $avg }
+    } catch {
+        Write-Log "Error testing $name" "Red"
     }
 }
-
-Write-Log "`n--- Best Performers ---" "Cyan"
-$results | Sort-Object TimeMs | Select-Object -First 3 | Format-Table -AutoSize
-
 Pause-If-Interactive

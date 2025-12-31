@@ -1,32 +1,16 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
-Write-Header "Optimizing TCP/IP Settings"
+Write-Header "Optimizing Network TCP Settings"
 
 try {
-    # 1. TCP Auto-Tuning
-    Write-Log "Configuring TCP Auto-Tuning..."
-    $current = Get-NetTCPSetting -SettingName "Internet" -ErrorAction SilentlyContinue
-    if ($null -eq $current) { $current = Get-NetTCPSetting | Select-Object -First 1 }
+    Write-Log "Setting TCP Global Autotuning to Normal..."
+    netsh int tcp set global autotuninglevel=normal
 
-    Write-Log "Current Auto-Tuning Level: $($current.AutoTuningLevelLocal)" "Gray"
-
-    # Set to Normal (Recommended for most broadband)
-    Set-NetTCPSetting -SettingName ($current.SettingName) -AutoTuningLevelLocal Normal -ErrorAction SilentlyContinue
-    Write-Log "Set Auto-Tuning to 'Normal'." "Green"
-
-    # 2. Disable heuristics (Old Windows scaling that can cause issues)
     Write-Log "Disabling Windows Scaling Heuristics..."
-    netsh int tcp set heuristics disabled | Out-Null
-    Write-Log "Heuristics disabled." "Green"
+    netsh int tcp set heuristics disabled
 
-    # 3. Congestion Provider (CTCP is good, but CUBIC is default in Win10/11 usually)
-    # We leave this alone as changing it can cause issues on some networks.
-
-    Write-Log "--- Optimization Complete ---" "Cyan"
-    Write-Log "Settings verified."
-
+    Write-Log "Network Optimization Applied." "Green"
 } catch {
-    Write-Log "Error optimizing network: $($_.Exception.Message)" "Red" "ERROR"
+    Write-Log "Error: $($_.Exception.Message)" "Red"
 }
-
 Pause-If-Interactive

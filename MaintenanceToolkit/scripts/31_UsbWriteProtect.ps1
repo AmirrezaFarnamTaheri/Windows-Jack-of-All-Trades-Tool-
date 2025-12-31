@@ -1,19 +1,20 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
-Write-Header "USB Security Control"
-Write-Host "1. Enable Write Protection (Read-Only Mode)"
-Write-Host "2. Disable Write Protection (Normal Mode)"
-$choice = Read-Host "Select"
+Write-Header "USB Write Protection"
+$choice = Read-Host "Enable Write Protect (Y/N)?"
 
-$path = "HKLM:\SYSTEM\CurrentControlSet\Control\StorageDevicePolicies"
+try {
+    $key = "HKLM:\SYSTEM\CurrentControlSet\Control\StorageDevicePolicies"
+    if (-not (Test-Path $key)) { New-Item $key -Force | Out-Null }
 
-if ($choice -eq "1") {
-    if (!(Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
-    Set-ItemProperty -Path $path -Name "WriteProtect" -Value 1
-    Write-Host "USB Drives are now READ ONLY." -ForegroundColor Red
+    if ($choice -eq "Y") {
+        Set-ItemProperty -Path $key -Name "WriteProtect" -Value 1 -Type DWord
+        Write-Log "USB Write Protection ENABLED." "Green"
+    } else {
+        Set-ItemProperty -Path $key -Name "WriteProtect" -Value 0 -Type DWord
+        Write-Log "USB Write Protection DISABLED." "Green"
+    }
+} catch {
+    Write-Log "Error: $($_.Exception.Message)" "Red"
 }
-elseif ($choice -eq "2") {
-    Set-ItemProperty -Path $path -Name "WriteProtect" -Value 0
-    Write-Host "USB Drives are now Normal." -ForegroundColor Green
-}
-Write-Host "You may need to re-plug your USB drive."
+Pause-If-Interactive

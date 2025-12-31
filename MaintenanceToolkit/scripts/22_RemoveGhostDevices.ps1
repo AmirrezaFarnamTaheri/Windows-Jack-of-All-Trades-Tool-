@@ -1,10 +1,20 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
-Write-Header "Checking for Unused (Ghost) Devices"
+Write-Header "Remove Ghost Devices"
 
-Write-Host "Enabling 'Show Non-Present Devices' variable..." -ForegroundColor Yellow
-[Environment]::SetEnvironmentVariable("DEVMGR_SHOW_NONPRESENT_DEVICES", "1", "User")
+Write-Log "This script configures Device Manager to show hidden devices."
+Write-Log "It cannot automatically delete them safely."
 
-Write-Host "Opening Device Manager..." -ForegroundColor Green
-Write-Host "ACTION: Go to 'View' -> 'Show hidden devices'. Grayed out icons are ghost devices." -ForegroundColor Magenta
-devmgmt.msc
+try {
+    Write-Log "Setting environment variable..."
+    [Environment]::SetEnvironmentVariable("devmgr_show_nonpresent_devices", "1", "Machine")
+
+    Write-Log "Opening Device Manager..."
+    Start-Process devmgmt.msc
+
+    Write-Log "In Device Manager, go to View -> Show hidden devices." "Cyan"
+    Write-Log "Delete grayed-out icons manually if needed." "White"
+} catch {
+    Write-Log "Error: $($_.Exception.Message)" "Red"
+}
+Pause-If-Interactive

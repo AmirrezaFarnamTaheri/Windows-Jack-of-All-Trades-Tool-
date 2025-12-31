@@ -3,22 +3,25 @@ Assert-Admin
 Write-Header "Software Update & Optimization"
 
 # 1. Winget Upgrade
-if (Get-Command winget -ErrorAction SilentlyContinue) {
-    Write-Log "Searching for updates via Winget..." "Cyan"
-
-    # We use a custom process call to handle output better or just let it stream.
-    # Interactive mode is better for winget to see progress bars.
-
-    $wingetArgs = "upgrade", "--all", "--include-unknown", "--accept-package-agreements", "--accept-source-agreements"
-
-    # Check if there are updates first?
-    # winget upgrade (without --all) lists them.
+if (Test-IsWingetAvailable) {
+    Write-Log "Winget detected. Checking for updates..." "Cyan"
 
     try {
-        Start-Process winget -ArgumentList $wingetArgs -Wait -NoNewWindow
-        Write-Log "Update process finished." "Green"
+        # Update sources first
+        Write-Log "Updating Winget sources..." "Gray"
+        Start-Process winget -ArgumentList "source update" -Wait -NoNewWindow -ErrorAction SilentlyContinue
+
+        Write-Log "Starting upgrade process..."
+        $wingetArgs = "upgrade", "--all", "--include-unknown", "--accept-package-agreements", "--accept-source-agreements"
+
+        $proc = Start-Process winget -ArgumentList $wingetArgs -Wait -NoNewWindow -PassThru
+        if ($proc.ExitCode -eq 0) {
+            Write-Log "All apps are up to date." "Green"
+        } else {
+            Write-Log "Update process finished (Code: $($proc.ExitCode))." "White"
+        }
     } catch {
-        Write-Log "Winget execution failed." "Red"
+        Write-Log "Winget execution failed: $($_.Exception.Message)" "Red"
     }
 } else {
     Write-Log "Winget is not installed. Skipping software updates." "Yellow"
@@ -26,10 +29,12 @@ if (Get-Command winget -ErrorAction SilentlyContinue) {
 
 # 2. Power Plan
 Write-Log "Resetting Power Plan to Defaults (Fixes stuck throttles)..." "Cyan"
-Start-Process powercfg -ArgumentList "-restoredefaultschemes" -Wait -NoNewWindow
-
-# 3. Memory Optimization (Empty Standby List - requires external tool usually, but we can do a GC collect for PowerShell itself or similar minor things)
-# [System.GC]::Collect() # Only affects this process.
+try {
+    Start-Process powercfg -ArgumentList "-restoredefaultschemes" -Wait -NoNewWindow
+    Write-Log "Power Plan reset." "Green"
+} catch {
+    Write-Log "Could not reset power plan." "Red"
+}
 
 Write-Log "--- Optimization Complete ---" "Green"
 

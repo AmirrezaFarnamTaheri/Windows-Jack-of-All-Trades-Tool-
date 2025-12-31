@@ -2,27 +2,18 @@
 Assert-Admin
 Write-Header "Generating Battery Health Report"
 
-$reportPath = "$env:USERPROFILE\Desktop\battery_report.html"
-
 try {
-    Write-Log "Analyzing battery usage via powercfg..."
-    Start-Process powercfg -ArgumentList "/batteryreport /output `"$reportPath`"" -Wait -NoNewWindow
+    $path = "$env:TEMP\battery-report.html"
+    Write-Log "Running powercfg /batteryreport..."
+    powercfg /batteryreport /output "$path" /duration 14
 
-    if (Test-Path $reportPath) {
-        Write-Log "Report generated: $reportPath" "Green"
-
-        if ($IsInteractive) {
-             # If run from the GUI via "Interactive" button or raw CLI
-             Write-Log "Opening report..." "Yellow"
-             Start-Process $reportPath
-        } else {
-             Write-Log "Note: You can open the file on your Desktop manually." "White"
-        }
+    if (Test-Path $path) {
+        Write-Log "Report generated at $path" "Green"
+        Start-Process "$path"
     } else {
-        throw "Report file not created."
+        Write-Log "Failed to generate report." "Red"
     }
 } catch {
     Write-Log "Error: $($_.Exception.Message)" "Red"
 }
-
 Pause-If-Interactive

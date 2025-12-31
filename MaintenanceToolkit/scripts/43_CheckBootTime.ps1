@@ -1,21 +1,19 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
-Write-Header "Analyzing Last Boot Time"
+Write-Header "Boot Time Analysis"
 
-$bootEvent = Get-WinEvent -LogName "Microsoft-Windows-Diagnostics-Performance/Operational" -ErrorAction SilentlyContinue | Where-Object {$_.Id -eq 100} | Select-Object -First 1
+try {
+    # Event ID 100 in Microsoft-Windows-Diagnostics-Performance/Operational
+    $log = Get-WinEvent -LogName "Microsoft-Windows-Diagnostics-Performance/Operational" -MaxEvents 1 -FilterXPath "*[System[(EventID=100)]]" -ErrorAction SilentlyContinue
 
-if ($bootEvent) {
-    [xml]$xml = $bootEvent.ToXml()
-    $ms = $xml.Event.UserData.BootPerformanceMonitoring.BootDuration
-    $seconds = [math]::Round($ms / 1000, 2)
-
-    Write-Host "Last Boot Duration: $seconds seconds" -ForegroundColor Green
-
-    if ($seconds -gt 60) {
-        Write-Host "Status: SLOW (Consider disabling startup apps)" -ForegroundColor Red
+    if ($log) {
+        $bootTimeMs = $log.Properties[0].Value
+        $bootTimeSec = [math]::Round($bootTimeMs / 1000, 2)
+        Write-Log "Last Boot Time: $bootTimeSec seconds" "Cyan"
     } else {
-        Write-Host "Status: HEALTHY" -ForegroundColor Green
+        Write-Log "No boot time performance logs found." "Yellow"
     }
-} else {
-    Write-Host "No boot diagnostics found (Logs might be cleared)." -ForegroundColor Yellow
+} catch {
+    Write-Log "Error: $($_.Exception.Message)" "Red"
 }
+Pause-If-Interactive

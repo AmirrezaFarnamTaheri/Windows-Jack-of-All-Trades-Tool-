@@ -1,11 +1,19 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
-Write-Header "Checking CPU Virtualization Support"
+Write-Header "Checking Virtualization Support"
 
-$v = Get-CimInstance Win32_Processor | Select-Object Name, VirtualizationFirmwareEnabled
-Write-Host "CPU: $($v.Name)"
-if ($v.VirtualizationFirmwareEnabled) {
-    Write-Host "Virtualization (VT-x/AMD-V): ENABLED" -ForegroundColor Green
-} else {
-    Write-Host "Virtualization (VT-x/AMD-V): DISABLED (Check BIOS)" -ForegroundColor Red
+try {
+    $info = Get-ComputerInfo -Property HyperVisorPresent,HyperVRequirement*
+
+    if ($info.HyperVisorPresent) {
+        Write-Log "Hypervisor is running." "Green"
+    } else {
+        Write-Log "Hypervisor is NOT running." "Yellow"
+    }
+
+    Write-Log "Virtualization Firmware Enabled: $($info.HyperVRequirementVirtualizationFirmwareEnabled)"
+    Write-Log "Data Execution Prevention Available: $($info.HyperVRequirementDataExecutionPreventionAvailable)"
+} catch {
+    Write-Log "Error: $($_.Exception.Message)" "Red"
 }
+Pause-If-Interactive

@@ -1,14 +1,16 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
-Write-Header "Clearing Clipboard History"
+Write-Header "Clearing Clipboard"
 
-Set-Clipboard -Value $null
-
-Write-Host "Clearing History..."
 try {
-    # Method to restart Clipboard User Service
-    Get-Service | Where-Object {$_.Name -like "cbdhsvc*"} | Restart-Service -Force -ErrorAction SilentlyContinue
-    Write-Host "Clipboard & History cleared." -ForegroundColor Green
+    Write-Log "Clearing Clipboard..."
+    Set-Clipboard $null
+    # Restart clipboard service if needed on Win10/11? Not standard.
+    # Just verify
+    if (-not (Get-Clipboard)) {
+        Write-Log "Clipboard Cleared." "Green"
+    }
 } catch {
-    Write-Host "Could not access Clipboard Service." -ForegroundColor Red
+    Write-Log "Error: $($_.Exception.Message)" "Red"
 }
+Pause-If-Interactive

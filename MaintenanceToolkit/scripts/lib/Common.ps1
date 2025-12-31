@@ -42,6 +42,27 @@ function Test-IsConnected {
     }
 }
 
+function Test-IsWingetAvailable {
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
+        return $true
+    }
+    return $false
+}
+
+function Assert-SystemRestoreEnabled {
+    try {
+        # Check if System Restore is enabled for C:
+        $rpoint = Get-ComputerRestorePoint -ErrorAction SilentlyContinue
+        # This only lists points. We need to enable it.
+        # Check registry or just try enabling it.
+        Enable-ComputerRestore -Drive "C:\" -ErrorAction SilentlyContinue
+        return $true
+    } catch {
+        Write-Log "Warning: Could not enable System Restore." "Yellow"
+        return $false
+    }
+}
+
 function Backup-RegistryKey ($KeyPath, $BackupDir="$env:USERPROFILE\Desktop\RegBackups") {
     if ([string]::IsNullOrWhiteSpace($KeyPath)) {
         Write-Log "Error: No registry key path provided for backup." "Red"

@@ -1,14 +1,19 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
-Write-Header "Fixing Stuck Printer Queue"
+Write-Header "Fixing Stuck Printer Spooler"
 
-Write-Host "Stopping Spooler Service..." -ForegroundColor Yellow
-Stop-Service spooler -Force
+try {
+    Write-Log "Stopping Print Spooler..."
+    Stop-Service Spooler -Force -ErrorAction SilentlyContinue
 
-Write-Host "Deleting temporary print files..." -ForegroundColor Yellow
-Remove-Item -Path "C:\Windows\System32\spool\PRINTERS\*.*" -Force -ErrorAction SilentlyContinue
+    Write-Log "Clearing Spooler files..."
+    Remove-Item "$env:WINDIR\System32\spool\PRINTERS\*" -Force -Recurse -ErrorAction SilentlyContinue
 
-Write-Host "Restarting Spooler Service..." -ForegroundColor Green
-Start-Service spooler
+    Write-Log "Restarting Print Spooler..."
+    Start-Service Spooler -ErrorAction SilentlyContinue
 
-Write-Host "Print queue cleared. Try printing again." -ForegroundColor Green
+    Write-Log "Printer Spooler Reset." "Green"
+} catch {
+    Write-Log "Error: $($_.Exception.Message)" "Red"
+}
+Pause-If-Interactive

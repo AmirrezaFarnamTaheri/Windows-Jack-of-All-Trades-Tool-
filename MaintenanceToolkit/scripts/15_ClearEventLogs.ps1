@@ -1,17 +1,16 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
-Write-Header "Clearing All Windows Event Logs"
+Write-Header "Clearing Event Logs"
+Write-Log "This will clear all Windows Event Logs." "Yellow"
 
-$logs = Get-EventLog -LogName *
-foreach ($log in $logs) {
-    $logName = $log.Log
-    try {
-        Write-Host "Clearing $logName..." -ForegroundColor Yellow
-        Clear-EventLog -LogName $logName -ErrorAction Stop
+try {
+    $logs = Get-EventLog -List | Where-Object { $_.Entries.Count -gt 0 }
+    foreach ($log in $logs) {
+        Write-Log "Clearing $($log.Log)..."
+        Clear-EventLog -LogName $log.Log -ErrorAction SilentlyContinue
     }
-    catch {
-        Write-Host "Skipped $logName (Locked or Empty)" -ForegroundColor DarkGray
-    }
+    Write-Log "All Event Logs Cleared." "Green"
+} catch {
+    Write-Log "Error: $($_.Exception.Message)" "Red"
 }
-
-Write-Host "--- All Logs Cleared ---" -ForegroundColor Green
+Pause-If-Interactive

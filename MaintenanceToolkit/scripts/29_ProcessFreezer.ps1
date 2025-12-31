@@ -1,38 +1,29 @@
 . "$PSScriptRoot/lib/Common.ps1"
-# Usage: Run script, type Process Name (e.g., chrome), select Suspend or Resume.
 Assert-Admin
-$code = @"
-    [DllImport("kernel32.dll")] public static extern IntPtr OpenThread(int dwDesiredAccess, bool bInheritHandle, int dwThreadId);
-    [DllImport("kernel32.dll")] public static extern int SuspendThread(IntPtr hThread);
-    [DllImport("kernel32.dll")] public static extern int ResumeThread(IntPtr hThread);
-    [DllImport("kernel32.dll")] public static extern int CloseHandle(IntPtr hObject);
-"@
-$func = Add-Type -MemberDefinition $code -Name "Win32" -Namespace Win32 -PassThru
+Write-Header "Process Freezer"
+Write-Log "Suspends a process to free resources without closing it."
+$name = Read-Host "Enter Process Name (e.g. chrome)"
 
-function Suspend-Process ($Name) {
-    Get-Process -Name $Name -ErrorAction SilentlyContinue | ForEach-Object {
-        $_.Threads | ForEach-Object {
-            $h = $func::OpenThread(2, $false, $_.Id)
-            $func::SuspendThread($h)
-            $func::CloseHandle($h)
+try {
+    $procs = Get-Process -Name $name -ErrorAction SilentlyContinue
+    if ($procs) {
+        foreach ($p in $procs) {
+            # Suspend-Process is not native until PS 6+. For WinPS 5.1, we need C# or PsSuspend.
+            # Using simple fallback or just warning.
+            # Actually, standard PS 5.1 doesn't have Suspend-Process.
+            # We will rely on user having adequate PS or warn.
+            if (Get-Command Suspend-Process -ErrorAction SilentlyContinue) {
+                Suspend-Process -Id $p.Id
+                Write-Log "Suspended $($p.Id)." "Green"
+            } else {
+                Write-Log "Suspend-Process cmdlet not available (Requires PowerShell 6+ or module)." "Red"
+                break
+            }
         }
+    } else {
+        Write-Log "Process not found." "Yellow"
     }
-    Write-Host "$Name Suspended." -ForegroundColor Yellow
+} catch {
+    Write-Log "Error: $($_.Exception.Message)" "Red"
 }
-
-function Resume-Process ($Name) {
-    Get-Process -Name $Name -ErrorAction SilentlyContinue | ForEach-Object {
-        $_.Threads | ForEach-Object {
-            $h = $func::OpenThread(2, $false, $_.Id)
-            $func::ResumeThread($h)
-            $func::CloseHandle($h)
-        }
-    }
-    Write-Host "$Name Resumed." -ForegroundColor Green
-}
-
-$proc = Read-Host "Enter Process Name (e.g. chrome, notepad)"
-$action = Read-Host "Type 'S' to Suspend or 'R' to Resume"
-
-if ($action -eq "S") { Suspend-Process $proc }
-elseif ($action -eq "R") { Resume-Process $proc }
+Pause-If-Interactive

@@ -9,6 +9,7 @@ using System.Security.Principal;
 using System.Windows.Forms;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Text;
 
 namespace SystemMaintenance
 {
@@ -35,6 +36,10 @@ namespace SystemMaintenance
         private Button btnSelectAll;
         private Button btnSelectNone;
 
+        // Favorites
+        private HashSet<string> favoriteScripts = new HashSet<string>();
+        private const string FAVORITES_FILE = "favorites.cfg";
+
         // State
         private bool isDarkMode = false;
         private bool isBatchMode = false;
@@ -49,7 +54,7 @@ namespace SystemMaintenance
 
             // --- UI Setup ---
             this.Text = "Ultimate System Maintenance Toolkit";
-            this.Size = new Size(1150, 800);
+            this.Size = new Size(1200, 850);
             this.StartPosition = FormStartPosition.CenterScreen;
             this.Icon = SystemIcons.Shield;
             this.Font = new Font("Segoe UI", 9F, FontStyle.Regular);
@@ -61,7 +66,7 @@ namespace SystemMaintenance
             }
 
             // --- Header (System Info & Search) ---
-            Panel headerPanel = new Panel { Dock = DockStyle.Top, Height = 90, Padding = new Padding(15) };
+            Panel headerPanel = new Panel { Dock = DockStyle.Top, Height = 95, Padding = new Padding(15) };
 
             Label lblSysInfo = new Label {
                 Text = GetDetailedSystemInfo(),
@@ -115,7 +120,7 @@ namespace SystemMaintenance
 
             // --- Tabs (Top Half) ---
             tabs = new TabControl { Dock = DockStyle.Fill, Padding = new Point(12, 6), ItemSize = new Size(100, 30), TabIndex = 1 };
-            BuildTabs();
+            BuildTabs(); // Now includes Favorites tab
             tabs.SelectedIndexChanged += (s, e) => FilterButtons(txtSearch.Text);
 
             // --- Description Panel ---
@@ -141,7 +146,13 @@ namespace SystemMaintenance
             Panel logControls = new Panel { Dock = DockStyle.Right, Width = 100 };
             btnCancel = new Button { Text = "Cancel", Dock = DockStyle.Top, Height = 40, BackColor = Color.Firebrick, ForeColor = Color.White, Visible = false, FlatStyle = FlatStyle.Flat, TabIndex = 6 };
             btnCancel.Click += BtnCancel_Click;
+
+            Button btnSaveLog = new Button { Text = "Save Log", Dock = DockStyle.Bottom, Height = 30, FlatStyle = FlatStyle.Flat };
+            btnSaveLog.Click += (s, e) => SaveLogToFile();
+
             logControls.Controls.Add(btnCancel);
+            logControls.Controls.Add(new Panel { Dock = DockStyle.Top, Height = 5 });
+            logControls.Controls.Add(btnSaveLog);
 
             txtLog = new TextBox {
                 Multiline = true,
@@ -187,6 +198,10 @@ namespace SystemMaintenance
                     string content = File.ReadAllText(SETTINGS_FILE);
                     isDarkMode = content.Contains("DarkMode=True");
                 }
+                if (File.Exists(FAVORITES_FILE))
+                {
+                    favoriteScripts = new HashSet<string>(File.ReadAllLines(FAVORITES_FILE).Where(l => !string.IsNullOrWhiteSpace(l)));
+                }
             }
             catch { /* Ignore errors */ }
         }
@@ -196,6 +211,7 @@ namespace SystemMaintenance
             try
             {
                 File.WriteAllText(SETTINGS_FILE, $"DarkMode={isDarkMode}");
+                File.WriteAllLines(FAVORITES_FILE, favoriteScripts);
             }
             catch { /* Ignore */ }
         }
@@ -204,11 +220,11 @@ namespace SystemMaintenance
         {
             string helpText =
                 "Ultimate System Maintenance Toolkit\n" +
-                "Version: 66\n\n" +
-                "BATCH MODE:\n" +
-                "Enable 'Batch Mode' to select multiple scripts using checkboxes.\n" +
-                "Use 'All'/'None' to quickly select scripts.\n" +
-                "Click 'RUN SELECTED' to execute them sequentially.\n\n" +
+                "Version: 67 (Refined)\n\n" +
+                "FEATURES:\n" +
+                "- FAVORITES: Right-click any script to Add/Remove from Favorites tab.\n" +
+                "- BATCH MODE: Select multiple scripts to run sequentially.\n" +
+                "- LOGGING: Save logs anytime. Logs auto-scroll.\n\n" +
                 "CATEGORIES:\n" +
                 "- CLEAN: Free up disk space.\n" +
                 "- REPAIR: Fix Windows issues (Updates, SFC, etc).\n" +
@@ -229,6 +245,7 @@ namespace SystemMaintenance
             string osName = "Unknown OS";
             string totalRam = "Unknown RAM";
             string cpuName = "Unknown CPU";
+            string freeSpace = "Unknown Disk";
 
             try {
                 using (var searcher = new ManagementObjectSearcher("SELECT Caption FROM Win32_OperatingSystem")) {
@@ -254,16 +271,32 @@ namespace SystemMaintenance
                 }
             } catch { }
 
-            return $"{osName}\n{cpuName} | {totalRam} RAM";
+            try {
+                DriveInfo drive = new DriveInfo("C");
+                if (drive.IsReady) {
+                    long free = drive.AvailableFreeSpace;
+                    long total = drive.TotalSize;
+                    freeSpace = $"C: {Math.Round(free / (1024.0 * 1024.0 * 1024.0), 1)} GB Free / {Math.Round(total / (1024.0 * 1024.0 * 1024.0), 1)} GB";
+                }
+            } catch { }
+
+            return $"{osName}\n{cpuName} | {totalRam} RAM\n{freeSpace}";
         }
 
         private void BuildTabs()
         {
+            tabs.TabPages.Clear();
+            allButtons.Clear();
+
             var categories = new Dictionary<string, List<ScriptInfo>>();
+
+            // Special Favorites Category
+            categories["FAVORITES"] = new List<ScriptInfo>();
+
             string[] cats = { "CLEAN", "REPAIR", "HARDWARE", "NETWORK", "SECURITY", "UTILS" };
             foreach (var c in cats) categories[c] = new List<ScriptInfo>();
 
-            // --- POPULATE SCRIPTS ---
+            // --- DEFINITIONS ---
             // CLEAN
             categories["CLEAN"].Add(new ScriptInfo("2_InstallCleaningTools.ps1", "Install Cleaners", "Installs Malwarebytes and BleachBit via Winget."));
             categories["CLEAN"].Add(new ScriptInfo("4_DeepCleanDisk.ps1", "Deep Disk Cleanup", "Runs Windows Disk Cleanup with advanced options."));
@@ -341,26 +374,57 @@ namespace SystemMaintenance
             categories["UTILS"].Add(new ScriptInfo("61_CheckActivation.ps1", "Check Activation", "Checks license expiry."));
             categories["UTILS"].Add(new ScriptInfo("63_InstallEssentials.ps1", "Install Essentials", "Installs Chrome, VLC, 7Zip, etc."));
 
-            foreach (var cat in categories)
+            // --- POPULATE FAVORITES ---
+            // Just duplicate references.
+            // We need to iterate all cats to find matching filenames.
+            foreach (var kvp in categories)
             {
-                TabPage page = new TabPage(cat.Key);
-                page.UseVisualStyleBackColor = false;
-
-                FlowLayoutPanel panel = new FlowLayoutPanel();
-                panel.Dock = DockStyle.Fill;
-                panel.AutoScroll = true;
-                panel.Padding = new Padding(10);
-
-                foreach (var script in cat.Value)
+                if (kvp.Key == "FAVORITES") continue;
+                foreach (var s in kvp.Value)
                 {
-                    Button btn = CreateButton(script);
-                    panel.Controls.Add(btn);
-                    allButtons.Add(btn);
+                    if (favoriteScripts.Contains(s.FileName))
+                    {
+                        categories["FAVORITES"].Add(s);
+                    }
                 }
+            }
 
-                page.Controls.Add(panel);
+            // Create Tabs
+            // Add Favorites first
+            if (categories["FAVORITES"].Count > 0)
+            {
+                TabPage favPage = CreateTabPage("FAVORITES", categories["FAVORITES"]);
+                tabs.TabPages.Add(favPage);
+            }
+
+            foreach (var cat in cats)
+            {
+                TabPage page = CreateTabPage(cat, categories[cat]);
                 tabs.TabPages.Add(page);
             }
+        }
+
+        private TabPage CreateTabPage(string title, List<ScriptInfo> scripts)
+        {
+            TabPage page = new TabPage(title);
+            page.UseVisualStyleBackColor = false;
+
+            FlowLayoutPanel panel = new FlowLayoutPanel();
+            panel.Dock = DockStyle.Fill;
+            panel.AutoScroll = true;
+            panel.Padding = new Padding(10);
+
+            foreach (var script in scripts)
+            {
+                // We must create NEW buttons because a script object might appear in multiple tabs (e.g. favorites)
+                // and a Control can only have one parent.
+                Button btn = CreateButton(script);
+                panel.Controls.Add(btn);
+                allButtons.Add(btn);
+            }
+
+            page.Controls.Add(panel);
+            return page;
         }
 
         private Button CreateButton(ScriptInfo script)
@@ -382,13 +446,19 @@ namespace SystemMaintenance
             CheckBox chk = new CheckBox();
             chk.Tag = script;
             chk.Parent = btn;
-            chk.Location = new Point(215, 5); // Top-Right corner
+            chk.Location = new Point(215, 5);
             chk.Size = new Size(20, 20);
-            chk.Visible = false; // Hidden initially
+            chk.Visible = false;
             chk.BackColor = Color.Transparent;
             chk.CheckedChanged += (s, e) => UpdateBatchButton();
 
-            script.BatchCheckBox = chk;
+            // We can't store the checkbox in ScriptInfo anymore because there are multiple buttons per script (Favorites)
+            // But for batch mode, if I check it in Favorites, should it check in Clean?
+            // For simplicity, let's treat them as separate instances.
+            // But we need a way to link them for 'Batch' running.
+            // Actually, we iterate 'allButtons' which contains ALL buttons.
+            // So if I have the same script in Fav and Clean, and check both, it runs twice.
+            // This is a side effect. We should probably dedup execution, but for now, user beware.
 
             // Visual indicators
             if (script.IsDestructive) btn.ForeColor = Color.OrangeRed;
@@ -402,14 +472,19 @@ namespace SystemMaintenance
                 if (script.IsDestructive) lblDescText.Text += "\n[WARNING: This action cannot be undone]";
             };
 
-            // Right Click for Source
+            // Context Menu
             ContextMenuStrip ctx = new ContextMenuStrip();
             ctx.Items.Add("View Script Source", null, (s, e) => ViewScriptSource(script));
+
+            bool isFav = favoriteScripts.Contains(script.FileName);
+            string favText = isFav ? "Remove from Favorites" : "Add to Favorites";
+            ctx.Items.Add(favText, null, (s, e) => ToggleFavorite(script));
+
             btn.ContextMenuStrip = ctx;
 
             btn.Click += (s, e) => {
                 if (isBatchMode) {
-                    chk.Checked = !chk.Checked; // Toggle selection
+                    chk.Checked = !chk.Checked;
                     return;
                 }
 
@@ -424,6 +499,39 @@ namespace SystemMaintenance
             return btn;
         }
 
+        private void ToggleFavorite(ScriptInfo script)
+        {
+            if (favoriteScripts.Contains(script.FileName))
+                favoriteScripts.Remove(script.FileName);
+            else
+                favoriteScripts.Add(script.FileName);
+
+            SaveSettings();
+
+            // Refresh Tabs
+            // Preserve selection?
+            int idx = tabs.SelectedIndex;
+            BuildTabs();
+            if (idx < tabs.TabCount) tabs.SelectedIndex = idx;
+            ApplyTheme(); // Re-apply theme to new buttons
+        }
+
+        private void SaveLogToFile()
+        {
+            try {
+                using (SaveFileDialog sfd = new SaveFileDialog()) {
+                    sfd.Filter = "Text Files (*.txt)|*.txt";
+                    sfd.FileName = $"MaintenanceLog_{DateTime.Now:yyyyMMdd_HHmm}.txt";
+                    if (sfd.ShowDialog() == DialogResult.OK) {
+                        File.WriteAllText(sfd.FileName, txtLog.Text);
+                        MessageBox.Show("Log saved successfully.", "Saved", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
+                }
+            } catch (Exception ex) {
+                MessageBox.Show("Error saving log: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
         private void ChkBatchMode_CheckedChanged(object sender, EventArgs e)
         {
             isBatchMode = chkBatchMode.Checked;
@@ -431,13 +539,11 @@ namespace SystemMaintenance
             btnSelectAll.Visible = isBatchMode;
             btnSelectNone.Visible = isBatchMode;
 
-            // Show/Hide Checkboxes
             foreach (var btn in allButtons)
             {
-                ScriptInfo info = btn.Tag as ScriptInfo;
-                if (info != null && info.BatchCheckBox != null)
-                {
-                    info.BatchCheckBox.Visible = isBatchMode;
+                // Access child checkbox
+                foreach (Control c in btn.Controls) {
+                    if (c is CheckBox) c.Visible = isBatchMode;
                 }
             }
         }
@@ -446,30 +552,47 @@ namespace SystemMaintenance
         {
             foreach (var btn in allButtons)
             {
-                ScriptInfo info = btn.Tag as ScriptInfo;
-                if (info != null && info.BatchCheckBox != null && info.BatchCheckBox.Visible)
-                {
-                    info.BatchCheckBox.Checked = selected;
+                if (!btn.Visible) continue; // Only affect visible buttons (current tab / filter)
+                foreach (Control c in btn.Controls) {
+                    if (c is CheckBox chk) chk.Checked = selected;
                 }
             }
         }
 
         private void UpdateBatchButton()
         {
-            int count = allButtons.Count(b => ((ScriptInfo)b.Tag).BatchCheckBox.Checked);
+            // Count checked checkboxes
+            int count = 0;
+            foreach (var btn in allButtons) {
+                foreach (Control c in btn.Controls) {
+                    if (c is CheckBox chk && chk.Checked) count++;
+                }
+            }
             btnRunBatch.Text = $"RUN SELECTED ({count})";
         }
 
         private async void BtnRunBatch_Click(object sender, EventArgs e)
         {
-            var selectedScripts = allButtons
-                .Select(b => b.Tag as ScriptInfo)
-                .Where(s => s.BatchCheckBox.Checked)
-                .ToList();
+            // Gather scripts
+            // De-duplication logic: Use FileName as key
+            var scriptsToRun = new List<ScriptInfo>();
+            var seenFiles = new HashSet<string>();
 
-            if (selectedScripts.Count == 0) return;
+            foreach (var btn in allButtons) {
+                foreach (Control c in btn.Controls) {
+                    if (c is CheckBox chk && chk.Checked) {
+                        ScriptInfo s = btn.Tag as ScriptInfo;
+                        if (!seenFiles.Contains(s.FileName)) {
+                            scriptsToRun.Add(s);
+                            seenFiles.Add(s.FileName);
+                        }
+                    }
+                }
+            }
 
-            if (MessageBox.Show($"Run {selectedScripts.Count} scripts sequentially?", "Confirm Batch", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.No)
+            if (scriptsToRun.Count == 0) return;
+
+            if (MessageBox.Show($"Run {scriptsToRun.Count} scripts sequentially?", "Confirm Batch", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.No)
                 return;
 
             batchCts = new CancellationTokenSource();
@@ -480,18 +603,18 @@ namespace SystemMaintenance
             btnCancel.Visible = true;
 
             progressBar.Style = ProgressBarStyle.Continuous;
-            progressBar.Maximum = selectedScripts.Count;
+            progressBar.Maximum = scriptsToRun.Count;
             progressBar.Value = 0;
             progressBar.Visible = true;
 
             try
             {
                 int processed = 0;
-                foreach (var script in selectedScripts)
+                foreach (var script in scriptsToRun)
                 {
                     if (batchCts.Token.IsCancellationRequested) break;
 
-                    statusLabel.Text = $"Running {processed + 1} of {selectedScripts.Count}: {script.DisplayName}";
+                    statusLabel.Text = $"Running {processed + 1} of {scriptsToRun.Count}: {script.DisplayName}";
                     await RunScriptAsync(script, batchCts.Token);
                     processed++;
                     progressBar.Value = processed;
@@ -505,7 +628,7 @@ namespace SystemMaintenance
                 btnSelectNone.Enabled = true;
                 btnCancel.Visible = false;
                 progressBar.Visible = false;
-                progressBar.Style = ProgressBarStyle.Marquee; // Reset style
+                progressBar.Style = ProgressBarStyle.Marquee;
                 statusLabel.Text = "Batch Execution Finished";
                 Log("--- Batch Execution Finished ---");
 
@@ -603,7 +726,7 @@ namespace SystemMaintenance
 
                 this.Invoke(new Action(() => {
                      Log($"Starting: {script.DisplayName}...");
-                     if (!progressBar.Visible) { // Only update if not controlled by batch loop
+                     if (!progressBar.Visible) {
                         statusLabel.Text = $"Running: {script.DisplayName}";
                         progressBar.Visible = true;
                      }
@@ -648,7 +771,6 @@ namespace SystemMaintenance
             string scriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "scripts", script.FileName);
             if (!File.Exists(scriptPath))
             {
-                // Fallback for root path
                 scriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, script.FileName);
             }
 
@@ -665,12 +787,15 @@ namespace SystemMaintenance
                 ProcessStartInfo psi = new ProcessStartInfo();
                 psi.FileName = "powershell.exe";
 
+                // Try to use UTF8 to catch emoji/unicode logs
+                psi.StandardOutputEncoding = Encoding.UTF8;
+                psi.StandardErrorEncoding = Encoding.UTF8;
+
                 if (script.IsInteractive)
                 {
                     psi.Arguments = $"-NoProfile -ExecutionPolicy Bypass -NoExit -File \"{scriptPath}\"";
                     psi.UseShellExecute = true;
 
-                    // Interactive scripts cannot be tracked easily for output in the same way
                     Process.Start(psi);
                     this.Invoke(new Action(() => {
                         Log($"Launched {script.DisplayName} in external window.");
@@ -711,16 +836,13 @@ namespace SystemMaintenance
         {
             string line = $"[{DateTime.Now.ToShortTimeString()}] {msg}";
 
-            // UI Thread
             if (txtLog.InvokeRequired) { txtLog.Invoke(new Action<string>(Log), msg); return; }
 
             txtLog.AppendText(line + "\r\n");
 
-            // Auto-scroll
             txtLog.SelectionStart = txtLog.Text.Length;
             txtLog.ScrollToCaret();
 
-            // File Log (Simple append)
             try {
                 string logDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs");
                 if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
@@ -754,21 +876,23 @@ namespace SystemMaintenance
             {
                 page.BackColor = backColor;
                 page.ForeColor = foreColor;
+
+                // Refresh buttons inside panel
+                foreach(Control c in page.Controls) {
+                    if (c is FlowLayoutPanel p) {
+                        foreach(Control btn in p.Controls) {
+                            if (btn is Button b) {
+                                b.BackColor = btnBack;
+                                b.ForeColor = ((ScriptInfo)b.Tag).IsDestructive ? (isDarkMode ? Color.LightCoral : Color.Red) : foreColor;
+                                b.FlatAppearance.BorderColor = btnBorder;
+                            }
+                        }
+                    }
+                }
             }
 
             descPanel.BackColor = panelBack;
             descPanel.ForeColor = foreColor;
-
-            foreach (Button btn in allButtons)
-            {
-                btn.BackColor = btnBack;
-                if (((ScriptInfo)btn.Tag).IsDestructive)
-                    btn.ForeColor = isDarkMode ? Color.LightCoral : Color.Red;
-                else
-                    btn.ForeColor = foreColor;
-
-                btn.FlatAppearance.BorderColor = btnBorder;
-            }
 
             statusStrip.BackColor = isDarkMode ? Color.Black : Color.WhiteSmoke;
             statusStrip.ForeColor = isDarkMode ? Color.White : Color.Black;
@@ -802,9 +926,6 @@ namespace SystemMaintenance
         public string Description { get; set; }
         public bool IsInteractive { get; set; }
         public bool IsDestructive { get; set; }
-
-        // UI Helpers
-        public CheckBox BatchCheckBox { get; set; }
 
         public ScriptInfo(string file, string name, string desc, bool interactive = false, bool destructive = false)
         {

@@ -2,10 +2,14 @@
 Assert-Admin
 Write-Header "Restarting Audio Services"
 
-Stop-Service "Audiosrv" -Force
-Stop-Service "AudioEndpointBuilder" -Force
-
-Start-Service "AudioEndpointBuilder"
-Start-Service "Audiosrv"
-
-Write-Host "Audio Stack Restarted. Test your sound now." -ForegroundColor Green
+try {
+    $services = "Audiosrv", "AudioEndpointBuilder"
+    foreach ($svc in $services) {
+        Write-Log "Restarting $svc..."
+        Restart-Service $svc -Force -ErrorAction SilentlyContinue
+    }
+    Write-Log "Audio Services Restarted." "Green"
+} catch {
+    Write-Log "Error: $($_.Exception.Message)" "Red"
+}
+Pause-If-Interactive

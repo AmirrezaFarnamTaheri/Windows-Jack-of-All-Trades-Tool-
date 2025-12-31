@@ -1,12 +1,19 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
-Write-Header "Quick Mirror Backup (Robocopy)"
+Write-Header "Quick Backup (Documents Mirror)"
 
-$source = "$env:USERPROFILE\Documents"
-$dest = Read-Host "Enter Destination Drive Letter (e.g. E:\Backup)"
+$source = [Environment]::GetFolderPath("MyDocuments")
+$dest = "D:\Backups\Documents" # Simplified. Real world would ask.
+$dest = Read-Host "Enter Backup Destination Path (e.g. E:\Backup)"
 
-if (-not (Test-Path $dest)) { New-Item -ItemType Directory -Path $dest -Force | Out-Null }
+try {
+    if (-not (Test-Path $dest)) { New-Item $dest -ItemType Directory -Force | Out-Null }
 
-robocopy "$source" "$dest" /MIR /XO /R:1 /W:1 /MT:8
+    Write-Log "Mirroring $source to $dest..."
+    robocopy "$source" "$dest" /MIR /R:1 /W:1 /NP /MT:8
 
-Write-Host "Backup Complete." -ForegroundColor Green
+    Write-Log "Backup Process Finished." "Green"
+} catch {
+    Write-Log "Error: $($_.Exception.Message)" "Red"
+}
+Pause-If-Interactive

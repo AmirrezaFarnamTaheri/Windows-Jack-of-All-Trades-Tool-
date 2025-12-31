@@ -1,5 +1,11 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
-Write-Header "Checking Windows Activation Status"
-cscript //nologo $env:SystemRoot\System32\slmgr.vbs /xpr
-cscript //nologo $env:SystemRoot\System32\slmgr.vbs /dli
+Write-Header "Checking Windows Activation"
+
+try {
+    Start-Process slmgr.vbs -ArgumentList "/xpr"
+    Write-Log "Activation status popup launched." "Green"
+} catch {
+    Write-Log "Error: $($_.Exception.Message)" "Red"
+}
+Pause-If-Interactive
