@@ -1,19 +1,34 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
-Write-Header "Cleaning System PATH"
+Write-Header "Cleaning System PATH Environment Variable"
 
-$path = [Environment]::GetEnvironmentVariable("Path", "Machine")
-$entries = $path -split ";"
-$newPath = @()
+try {
+    $scope = "Machine" # System PATH
+    $path = [Environment]::GetEnvironmentVariable("Path", $scope)
+    $parts = $path -split ";"
+    $newParts = @()
 
-foreach ($entry in $entries) {
-    if (Test-Path $entry) {
-        $newPath += $entry
-    } else {
-        Write-Host "Removing Dead Path: $entry" -ForegroundColor Red
+    foreach ($p in $parts) {
+        if ([string]::IsNullOrWhiteSpace($p)) { continue }
+        if (Test-Path $p) {
+            $newParts += $p
+        } else {
+            Write-Log "Removed dead path: $p" "Yellow"
+        }
     }
-}
 
-$final = $newPath -join ";"
-[Environment]::SetEnvironmentVariable("Path", $final, "Machine")
-Write-Host "PATH Cleaned." -ForegroundColor Green
+    # Remove duplicates
+    $finalParts = $newParts | Select-Object -Unique
+    $newPath = $finalParts -join ";"
+
+    if ($newPath -ne $path) {
+        [Environment]::SetEnvironmentVariable("Path", $newPath, $scope)
+        Write-Log "PATH Cleaned and Updated." "Green"
+    } else {
+        Write-Log "PATH is already clean." "Green"
+    }
+
+} catch {
+    Write-Log "Error: $($_.Exception.Message)" "Red"
+}
+Pause-If-Interactive

@@ -1,13 +1,19 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
-Write-Header "Activating God Mode"
+Write-Header "Enabling God Mode"
 
-$desktop = [Environment]::GetFolderPath("Desktop")
-$godModePath = "$desktop\GodMode.{ED7BA470-8E54-465E-825C-99712043E01C}"
+try {
+    $desktop = [Environment]::GetFolderPath("Desktop")
+    $folderName = "GodMode.{ED7BA470-8E54-465E-825C-99712043E01C}"
+    $path = "$desktop\$folderName"
 
-if (-not (Test-Path $godModePath)) {
-    New-Item -Path $godModePath -ItemType Directory -Force | Out-Null
-    Write-Host "God Mode icon created on your Desktop." -ForegroundColor Green
-} else {
-    Write-Host "God Mode already exists." -ForegroundColor Yellow
+    if (-not (Test-Path $path)) {
+        New-Item -Path $path -ItemType Directory | Out-Null
+        Write-Log "God Mode folder created on Desktop." "Green"
+    } else {
+        Write-Log "God Mode folder already exists." "Yellow"
+    }
+} catch {
+    Write-Log "Error: $($_.Exception.Message)" "Red"
 }
+Pause-If-Interactive

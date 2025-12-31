@@ -1,11 +1,15 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
-Write-Header "Retrieving OEM BIOS Windows Key"
+Write-Header "Get OEM BIOS Key"
 
-$key = (Get-WmiObject -query 'select * from SoftwareLicensingService').OA3xOriginalProductKey
-
-if ($key) {
-    Write-Host "BIOS Product Key: $key" -ForegroundColor Green
-} else {
-    Write-Host "No OEM Key found in BIOS (Retail license used?)." -ForegroundColor Yellow
+try {
+    $key = (Get-WmiObject -Class SoftwareLicensingService).OA3xOriginalProductKey
+    if ($key) {
+        Write-Log "OEM Key Found: $key" "Green"
+    } else {
+        Write-Log "No OEM Key found in firmware." "Yellow"
+    }
+} catch {
+    Write-Log "Error: $($_.Exception.Message)" "Red"
 }
+Pause-If-Interactive

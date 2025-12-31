@@ -1,14 +1,18 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
-$key = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize"
-$current = (Get-ItemProperty -Path $key).AppsUseLightTheme
+Write-Header "Toggling System Dark Mode"
 
-if ($current -eq 1) {
-    Set-ItemProperty -Path $key -Name "AppsUseLightTheme" -Value 0
-    Set-ItemProperty -Path $key -Name "SystemUsesLightTheme" -Value 0
-    Write-Host "Switched to DARK Mode" -ForegroundColor Cyan
-} else {
-    Set-ItemProperty -Path $key -Name "AppsUseLightTheme" -Value 1
-    Set-ItemProperty -Path $key -Name "SystemUsesLightTheme" -Value 1
-    Write-Host "Switched to LIGHT Mode" -ForegroundColor Yellow
+try {
+    $key = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
+    $current = (Get-ItemProperty $key).AppsUseLightTheme
+
+    $newValue = if ($current -eq 0) { 1 } else { 0 }
+
+    Set-ItemProperty -Path $key -Name "AppsUseLightTheme" -Value $newValue
+    Set-ItemProperty -Path $key -Name "SystemUsesLightTheme" -Value $newValue
+
+    Write-Log "Theme Toggled." "Green"
+} catch {
+    Write-Log "Error: $($_.Exception.Message)" "Red"
 }
+Pause-If-Interactive

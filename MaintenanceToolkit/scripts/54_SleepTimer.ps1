@@ -1,10 +1,14 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
-$min = Read-Host "Shut down in how many minutes? (0 to cancel)"
+Write-Header "Sleep Timer"
+$min = Read-Host "Enter minutes until shutdown"
 
-if ($min -gt 0) {
+try {
     $sec = [int]$min * 60
+    Write-Log "Scheduling shutdown in $min minutes..."
     shutdown /s /t $sec
-    Write-Host "Timer set for $min minutes." -ForegroundColor Green
-    Write-Host "(Run 'shutdown /a' in CMD to cancel)" -ForegroundColor Yellow
+    Write-Log "Timer Set. To cancel, run 'shutdown /a' in CMD." "Green"
+} catch {
+    Write-Log "Error: Invalid input." "Red"
 }
+Pause-If-Interactive

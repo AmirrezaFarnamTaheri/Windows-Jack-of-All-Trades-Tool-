@@ -9,6 +9,7 @@ using System.Security.Principal;
 using System.Windows.Forms;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Text;
 
 namespace SystemMaintenance
 {
@@ -32,6 +33,12 @@ namespace SystemMaintenance
         // Batch Mode Controls
         private CheckBox chkBatchMode;
         private Button btnRunBatch;
+        private Button btnSelectAll;
+        private Button btnSelectNone;
+
+        // Favorites
+        private HashSet<string> favoriteScripts = new HashSet<string>();
+        private const string FAVORITES_FILE = "favorites.cfg";
 
         // State
         private bool isDarkMode = false;
@@ -47,7 +54,7 @@ namespace SystemMaintenance
 
             // --- UI Setup ---
             this.Text = "Ultimate System Maintenance Toolkit";
-            this.Size = new Size(1150, 800);
+            this.Size = new Size(1200, 850);
             this.StartPosition = FormStartPosition.CenterScreen;
             this.Icon = SystemIcons.Shield;
             this.Font = new Font("Segoe UI", 9F, FontStyle.Regular);
@@ -59,7 +66,7 @@ namespace SystemMaintenance
             }
 
             // --- Header (System Info & Search) ---
-            Panel headerPanel = new Panel { Dock = DockStyle.Top, Height = 90, Padding = new Padding(15) };
+            Panel headerPanel = new Panel { Dock = DockStyle.Top, Height = 95, Padding = new Padding(15) };
 
             Label lblSysInfo = new Label {
                 Text = GetDetailedSystemInfo(),
@@ -74,22 +81,30 @@ namespace SystemMaintenance
 
             // Search Box
             GroupBox searchGroup = new GroupBox { Text = "Search Tools", Dock = DockStyle.Top, Height = 50 };
-            txtSearch = new TextBox { Dock = DockStyle.Fill, BorderStyle = BorderStyle.None, Font = new Font("Segoe UI", 11F) };
+            txtSearch = new TextBox { Dock = DockStyle.Fill, BorderStyle = BorderStyle.None, Font = new Font("Segoe UI", 11F), TabIndex = 0 };
             txtSearch.TextChanged += TxtSearch_TextChanged;
             searchGroup.Controls.Add(txtSearch);
             txtSearch.Location = new Point(5, 18);
             txtSearch.Width = 370;
             txtSearch.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top;
 
-            // Batch Mode Toggle
-            chkBatchMode = new CheckBox { Text = "Enable Batch Mode", Dock = DockStyle.Right, Width = 140, Appearance = Appearance.Button, TextAlign = ContentAlignment.MiddleCenter, FlatStyle = FlatStyle.Flat };
+            // Batch Mode Controls
+            chkBatchMode = new CheckBox { Text = "Batch Mode", Dock = DockStyle.Right, Width = 100, Appearance = Appearance.Button, TextAlign = ContentAlignment.MiddleCenter, FlatStyle = FlatStyle.Flat, TabIndex = 2 };
             chkBatchMode.CheckedChanged += ChkBatchMode_CheckedChanged;
 
+            btnSelectAll = new Button { Text = "All", Dock = DockStyle.Right, Width = 40, FlatStyle = FlatStyle.Flat, Visible = false, Font = new Font("Segoe UI", 8F) };
+            btnSelectAll.Click += (s, e) => SetAllBatchSelection(true);
+
+            btnSelectNone = new Button { Text = "None", Dock = DockStyle.Right, Width = 40, FlatStyle = FlatStyle.Flat, Visible = false, Font = new Font("Segoe UI", 8F) };
+            btnSelectNone.Click += (s, e) => SetAllBatchSelection(false);
+
             // Help Button
-            Button btnHelp = new Button { Text = "Help / About", Dock = DockStyle.Left, Width = 100, FlatStyle = FlatStyle.Flat };
+            Button btnHelp = new Button { Text = "Help", Dock = DockStyle.Left, Width = 60, FlatStyle = FlatStyle.Flat, TabIndex = 3 };
             btnHelp.Click += (s, e) => ShowHelp();
 
             Panel toolBar = new Panel { Dock = DockStyle.Bottom, Height = 30 };
+            toolBar.Controls.Add(btnSelectNone);
+            toolBar.Controls.Add(btnSelectAll);
             toolBar.Controls.Add(chkBatchMode);
             toolBar.Controls.Add(btnHelp);
 
@@ -104,8 +119,8 @@ namespace SystemMaintenance
             splitContainer = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, SplitterDistance = 500, FixedPanel = FixedPanel.Panel2 };
 
             // --- Tabs (Top Half) ---
-            tabs = new TabControl { Dock = DockStyle.Fill, Padding = new Point(12, 6), ItemSize = new Size(100, 30) };
-            BuildTabs();
+            tabs = new TabControl { Dock = DockStyle.Fill, Padding = new Point(12, 6), ItemSize = new Size(100, 30), TabIndex = 1 };
+            BuildTabs(); // Now includes Favorites tab
             tabs.SelectedIndexChanged += (s, e) => FilterButtons(txtSearch.Text);
 
             // --- Description Panel ---
@@ -113,7 +128,7 @@ namespace SystemMaintenance
             lblDescTitle = new Label { Dock = DockStyle.Top, Height = 25, Font = new Font("Segoe UI", 11F, FontStyle.Bold), Text = "Hover over a tool to see details." };
             lblDescText = new Label { Dock = DockStyle.Fill, Text = "", Font = new Font("Segoe UI", 9.5F) };
 
-            btnRunBatch = new Button { Text = "RUN SELECTED (0)", Dock = DockStyle.Right, Width = 150, BackColor = Color.SeaGreen, ForeColor = Color.White, Visible = false, FlatStyle = FlatStyle.Flat, Font = new Font("Segoe UI", 9F, FontStyle.Bold) };
+            btnRunBatch = new Button { Text = "RUN SELECTED (0)", Dock = DockStyle.Right, Width = 150, BackColor = Color.SeaGreen, ForeColor = Color.White, Visible = false, FlatStyle = FlatStyle.Flat, Font = new Font("Segoe UI", 9F, FontStyle.Bold), TabIndex = 4 };
             btnRunBatch.Click += BtnRunBatch_Click;
 
             descPanel.Controls.Add(btnRunBatch);
@@ -129,9 +144,15 @@ namespace SystemMaintenance
             GroupBox grpLog = new GroupBox { Text = "Activity Log", Dock = DockStyle.Fill, Padding = new Padding(10) };
 
             Panel logControls = new Panel { Dock = DockStyle.Right, Width = 100 };
-            btnCancel = new Button { Text = "Cancel Script", Dock = DockStyle.Top, Height = 40, BackColor = Color.Firebrick, ForeColor = Color.White, Visible = false, FlatStyle = FlatStyle.Flat };
+            btnCancel = new Button { Text = "Cancel", Dock = DockStyle.Top, Height = 40, BackColor = Color.Firebrick, ForeColor = Color.White, Visible = false, FlatStyle = FlatStyle.Flat, TabIndex = 6 };
             btnCancel.Click += BtnCancel_Click;
+
+            Button btnSaveLog = new Button { Text = "Save Log", Dock = DockStyle.Bottom, Height = 30, FlatStyle = FlatStyle.Flat };
+            btnSaveLog.Click += (s, e) => SaveLogToFile();
+
             logControls.Controls.Add(btnCancel);
+            logControls.Controls.Add(new Panel { Dock = DockStyle.Top, Height = 5 });
+            logControls.Controls.Add(btnSaveLog);
 
             txtLog = new TextBox {
                 Multiline = true,
@@ -140,7 +161,8 @@ namespace SystemMaintenance
                 ReadOnly = true,
                 BackColor = Color.FromArgb(30, 30, 30),
                 ForeColor = Color.LimeGreen,
-                Font = new Font("Consolas", 10)
+                Font = new Font("Consolas", 10),
+                TabIndex = 5
             };
 
             grpLog.Controls.Add(txtLog);
@@ -176,6 +198,10 @@ namespace SystemMaintenance
                     string content = File.ReadAllText(SETTINGS_FILE);
                     isDarkMode = content.Contains("DarkMode=True");
                 }
+                if (File.Exists(FAVORITES_FILE))
+                {
+                    favoriteScripts = new HashSet<string>(File.ReadAllLines(FAVORITES_FILE).Where(l => !string.IsNullOrWhiteSpace(l)));
+                }
             }
             catch { /* Ignore errors */ }
         }
@@ -185,6 +211,7 @@ namespace SystemMaintenance
             try
             {
                 File.WriteAllText(SETTINGS_FILE, $"DarkMode={isDarkMode}");
+                File.WriteAllLines(FAVORITES_FILE, favoriteScripts);
             }
             catch { /* Ignore */ }
         }
@@ -193,10 +220,11 @@ namespace SystemMaintenance
         {
             string helpText =
                 "Ultimate System Maintenance Toolkit\n" +
-                "Version: 65\n\n" +
-                "BATCH MODE:\n" +
-                "Enable 'Batch Mode' to select multiple scripts using checkboxes.\n" +
-                "Click 'RUN SELECTED' to execute them sequentially.\n\n" +
+                "Version: 67 (Refined)\n\n" +
+                "FEATURES:\n" +
+                "- FAVORITES: Right-click any script to Add/Remove from Favorites tab.\n" +
+                "- BATCH MODE: Select multiple scripts to run sequentially.\n" +
+                "- LOGGING: Save logs anytime. Logs auto-scroll.\n\n" +
                 "CATEGORIES:\n" +
                 "- CLEAN: Free up disk space.\n" +
                 "- REPAIR: Fix Windows issues (Updates, SFC, etc).\n" +
@@ -214,47 +242,61 @@ namespace SystemMaintenance
 
         private string GetDetailedSystemInfo()
         {
-            try
-            {
-                string osName = "Unknown OS";
-                string totalRam = "Unknown RAM";
-                string cpuName = "Unknown CPU";
+            string osName = "Unknown OS";
+            string totalRam = "Unknown RAM";
+            string cpuName = "Unknown CPU";
+            string freeSpace = "Unknown Disk";
 
-                using (var searcher = new ManagementObjectSearcher("SELECT Caption FROM Win32_OperatingSystem"))
-                {
-                    foreach (var item in searcher.Get()) { osName = item["Caption"].ToString(); break; }
+            try {
+                using (var searcher = new ManagementObjectSearcher("SELECT Caption FROM Win32_OperatingSystem")) {
+                    foreach (var item in searcher.Get()) { osName = item["Caption"]?.ToString() ?? osName; break; }
                 }
+            } catch { }
 
-                using (var searcher = new ManagementObjectSearcher("SELECT TotalVisibleMemorySize FROM Win32_OperatingSystem"))
-                {
-                    foreach (var item in searcher.Get())
-                    {
-                        long ramBytes = Convert.ToInt64(item["TotalVisibleMemorySize"]) * 1024;
-                        totalRam = Math.Round(ramBytes / (1024.0 * 1024.0 * 1024.0), 1) + " GB";
+            try {
+                using (var searcher = new ManagementObjectSearcher("SELECT TotalVisibleMemorySize FROM Win32_OperatingSystem")) {
+                    foreach (var item in searcher.Get()) {
+                        if (item["TotalVisibleMemorySize"] != null) {
+                            long ramBytes = Convert.ToInt64(item["TotalVisibleMemorySize"]) * 1024;
+                            totalRam = Math.Round(ramBytes / (1024.0 * 1024.0 * 1024.0), 1) + " GB";
+                        }
                         break;
                     }
                 }
+            } catch { }
 
-                using (var searcher = new ManagementObjectSearcher("SELECT Name FROM Win32_Processor"))
-                {
-                    foreach (var item in searcher.Get()) { cpuName = item["Name"].ToString(); break; }
+            try {
+                using (var searcher = new ManagementObjectSearcher("SELECT Name FROM Win32_Processor")) {
+                    foreach (var item in searcher.Get()) { cpuName = item["Name"]?.ToString() ?? cpuName; break; }
                 }
+            } catch { }
 
-                return $"{osName}\n{cpuName} | {totalRam} RAM";
-            }
-            catch
-            {
-                return $"OS: {Environment.OSVersion.VersionString} (WMI unavailable)";
-            }
+            try {
+                DriveInfo drive = new DriveInfo("C");
+                if (drive.IsReady) {
+                    long free = drive.AvailableFreeSpace;
+                    long total = drive.TotalSize;
+                    freeSpace = $"C: {Math.Round(free / (1024.0 * 1024.0 * 1024.0), 1)} GB Free / {Math.Round(total / (1024.0 * 1024.0 * 1024.0), 1)} GB";
+                }
+            } catch { }
+
+            return $"{osName}\n{cpuName} | {totalRam} RAM\n{freeSpace}";
         }
 
         private void BuildTabs()
         {
+            tabs.TabPages.Clear();
+            allButtons.Clear();
+
             var categories = new Dictionary<string, List<ScriptInfo>>();
+
+            // Special Favorites Category
+            categories["FAVORITES"] = new List<ScriptInfo>();
+
             string[] cats = { "CLEAN", "REPAIR", "HARDWARE", "NETWORK", "SECURITY", "UTILS" };
             foreach (var c in cats) categories[c] = new List<ScriptInfo>();
 
-            // --- POPULATE SCRIPTS ---
+            // --- DEFINITIONS ---
             // CLEAN
             categories["CLEAN"].Add(new ScriptInfo("2_InstallCleaningTools.ps1", "Install Cleaners", "Installs Malwarebytes and BleachBit via Winget."));
             categories["CLEAN"].Add(new ScriptInfo("4_DeepCleanDisk.ps1", "Deep Disk Cleanup", "Runs Windows Disk Cleanup with advanced options."));
@@ -332,26 +374,57 @@ namespace SystemMaintenance
             categories["UTILS"].Add(new ScriptInfo("61_CheckActivation.ps1", "Check Activation", "Checks license expiry."));
             categories["UTILS"].Add(new ScriptInfo("63_InstallEssentials.ps1", "Install Essentials", "Installs Chrome, VLC, 7Zip, etc."));
 
-            foreach (var cat in categories)
+            // --- POPULATE FAVORITES ---
+            // Just duplicate references.
+            // We need to iterate all cats to find matching filenames.
+            foreach (var kvp in categories)
             {
-                TabPage page = new TabPage(cat.Key);
-                page.UseVisualStyleBackColor = false;
-
-                FlowLayoutPanel panel = new FlowLayoutPanel();
-                panel.Dock = DockStyle.Fill;
-                panel.AutoScroll = true;
-                panel.Padding = new Padding(10);
-
-                foreach (var script in cat.Value)
+                if (kvp.Key == "FAVORITES") continue;
+                foreach (var s in kvp.Value)
                 {
-                    Button btn = CreateButton(script);
-                    panel.Controls.Add(btn);
-                    allButtons.Add(btn);
+                    if (favoriteScripts.Contains(s.FileName))
+                    {
+                        categories["FAVORITES"].Add(s);
+                    }
                 }
+            }
 
-                page.Controls.Add(panel);
+            // Create Tabs
+            // Add Favorites first
+            if (categories["FAVORITES"].Count > 0)
+            {
+                TabPage favPage = CreateTabPage("FAVORITES", categories["FAVORITES"]);
+                tabs.TabPages.Add(favPage);
+            }
+
+            foreach (var cat in cats)
+            {
+                TabPage page = CreateTabPage(cat, categories[cat]);
                 tabs.TabPages.Add(page);
             }
+        }
+
+        private TabPage CreateTabPage(string title, List<ScriptInfo> scripts)
+        {
+            TabPage page = new TabPage(title);
+            page.UseVisualStyleBackColor = false;
+
+            FlowLayoutPanel panel = new FlowLayoutPanel();
+            panel.Dock = DockStyle.Fill;
+            panel.AutoScroll = true;
+            panel.Padding = new Padding(10);
+
+            foreach (var script in scripts)
+            {
+                // We must create NEW buttons because a script object might appear in multiple tabs (e.g. favorites)
+                // and a Control can only have one parent.
+                Button btn = CreateButton(script);
+                panel.Controls.Add(btn);
+                allButtons.Add(btn);
+            }
+
+            page.Controls.Add(panel);
+            return page;
         }
 
         private Button CreateButton(ScriptInfo script)
@@ -369,19 +442,23 @@ namespace SystemMaintenance
             btn.AccessibleName = script.DisplayName;
             btn.AccessibleDescription = script.Description + (script.IsDestructive ? " Warning: Destructive Action." : "");
 
-            // Batch Mode Checkbox (Hidden by default)
+            // Batch Mode Checkbox
             CheckBox chk = new CheckBox();
             chk.Tag = script;
             chk.Parent = btn;
-            chk.Location = new Point(215, 5); // Top-Right corner
+            chk.Location = new Point(215, 5);
             chk.Size = new Size(20, 20);
-            chk.Visible = false; // Hidden initially
+            chk.Visible = false;
             chk.BackColor = Color.Transparent;
             chk.CheckedChanged += (s, e) => UpdateBatchButton();
 
-            // Store ref to CheckBox in Button Tag? No, easier to just find it or make a custom control.
-            // Let's use a dictionary or just iterate controls.
-            script.BatchCheckBox = chk; // Link it back to info object (hacky but works if we add prop)
+            // We can't store the checkbox in ScriptInfo anymore because there are multiple buttons per script (Favorites)
+            // But for batch mode, if I check it in Favorites, should it check in Clean?
+            // For simplicity, let's treat them as separate instances.
+            // But we need a way to link them for 'Batch' running.
+            // Actually, we iterate 'allButtons' which contains ALL buttons.
+            // So if I have the same script in Fav and Clean, and check both, it runs twice.
+            // This is a side effect. We should probably dedup execution, but for now, user beware.
 
             // Visual indicators
             if (script.IsDestructive) btn.ForeColor = Color.OrangeRed;
@@ -395,14 +472,19 @@ namespace SystemMaintenance
                 if (script.IsDestructive) lblDescText.Text += "\n[WARNING: This action cannot be undone]";
             };
 
-            // Right Click for Source
+            // Context Menu
             ContextMenuStrip ctx = new ContextMenuStrip();
             ctx.Items.Add("View Script Source", null, (s, e) => ViewScriptSource(script));
+
+            bool isFav = favoriteScripts.Contains(script.FileName);
+            string favText = isFav ? "Remove from Favorites" : "Add to Favorites";
+            ctx.Items.Add(favText, null, (s, e) => ToggleFavorite(script));
+
             btn.ContextMenuStrip = ctx;
 
             btn.Click += (s, e) => {
                 if (isBatchMode) {
-                    chk.Checked = !chk.Checked; // Toggle selection
+                    chk.Checked = !chk.Checked;
                     return;
                 }
 
@@ -417,64 +499,140 @@ namespace SystemMaintenance
             return btn;
         }
 
+        private void ToggleFavorite(ScriptInfo script)
+        {
+            if (favoriteScripts.Contains(script.FileName))
+                favoriteScripts.Remove(script.FileName);
+            else
+                favoriteScripts.Add(script.FileName);
+
+            SaveSettings();
+
+            // Refresh Tabs
+            // Preserve selection?
+            int idx = tabs.SelectedIndex;
+            BuildTabs();
+            if (idx < tabs.TabCount) tabs.SelectedIndex = idx;
+            ApplyTheme(); // Re-apply theme to new buttons
+        }
+
+        private void SaveLogToFile()
+        {
+            try {
+                using (SaveFileDialog sfd = new SaveFileDialog()) {
+                    sfd.Filter = "Text Files (*.txt)|*.txt";
+                    sfd.FileName = $"MaintenanceLog_{DateTime.Now:yyyyMMdd_HHmm}.txt";
+                    if (sfd.ShowDialog() == DialogResult.OK) {
+                        File.WriteAllText(sfd.FileName, txtLog.Text);
+                        MessageBox.Show("Log saved successfully.", "Saved", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
+                }
+            } catch (Exception ex) {
+                MessageBox.Show("Error saving log: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
         private void ChkBatchMode_CheckedChanged(object sender, EventArgs e)
         {
             isBatchMode = chkBatchMode.Checked;
             btnRunBatch.Visible = isBatchMode;
+            btnSelectAll.Visible = isBatchMode;
+            btnSelectNone.Visible = isBatchMode;
 
-            // Show/Hide Checkboxes
             foreach (var btn in allButtons)
             {
-                ScriptInfo info = btn.Tag as ScriptInfo;
-                if (info != null && info.BatchCheckBox != null)
-                {
-                    // Only show checkbox if NOT interactive (Batch mode doesn't support interactive well)
-                    // Or maybe we allow it but it will pop up windows. Let's allow it but warn.
-                    info.BatchCheckBox.Visible = isBatchMode;
+                // Access child checkbox
+                foreach (Control c in btn.Controls) {
+                    if (c is CheckBox) c.Visible = isBatchMode;
+                }
+            }
+        }
+
+        private void SetAllBatchSelection(bool selected)
+        {
+            foreach (var btn in allButtons)
+            {
+                if (!btn.Visible) continue; // Only affect visible buttons (current tab / filter)
+                foreach (Control c in btn.Controls) {
+                    if (c is CheckBox chk) chk.Checked = selected;
                 }
             }
         }
 
         private void UpdateBatchButton()
         {
-            int count = allButtons.Count(b => ((ScriptInfo)b.Tag).BatchCheckBox.Checked);
+            // Count checked checkboxes
+            int count = 0;
+            foreach (var btn in allButtons) {
+                foreach (Control c in btn.Controls) {
+                    if (c is CheckBox chk && chk.Checked) count++;
+                }
+            }
             btnRunBatch.Text = $"RUN SELECTED ({count})";
         }
 
         private async void BtnRunBatch_Click(object sender, EventArgs e)
         {
-            var selectedScripts = allButtons
-                .Select(b => b.Tag as ScriptInfo)
-                .Where(s => s.BatchCheckBox.Checked)
-                .ToList();
+            // Gather scripts
+            // De-duplication logic: Use FileName as key
+            var scriptsToRun = new List<ScriptInfo>();
+            var seenFiles = new HashSet<string>();
 
-            if (selectedScripts.Count == 0) return;
+            foreach (var btn in allButtons) {
+                foreach (Control c in btn.Controls) {
+                    if (c is CheckBox chk && chk.Checked) {
+                        ScriptInfo s = btn.Tag as ScriptInfo;
+                        if (!seenFiles.Contains(s.FileName)) {
+                            scriptsToRun.Add(s);
+                            seenFiles.Add(s.FileName);
+                        }
+                    }
+                }
+            }
 
-            if (MessageBox.Show($"Run {selectedScripts.Count} scripts sequentially?", "Confirm Batch", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.No)
+            if (scriptsToRun.Count == 0) return;
+
+            if (MessageBox.Show($"Run {scriptsToRun.Count} scripts sequentially?", "Confirm Batch", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.No)
                 return;
 
             batchCts = new CancellationTokenSource();
             btnRunBatch.Enabled = false;
             chkBatchMode.Enabled = false;
+            btnSelectAll.Enabled = false;
+            btnSelectNone.Enabled = false;
             btnCancel.Visible = true;
+
+            progressBar.Style = ProgressBarStyle.Continuous;
+            progressBar.Maximum = scriptsToRun.Count;
+            progressBar.Value = 0;
+            progressBar.Visible = true;
 
             try
             {
-                foreach (var script in selectedScripts)
+                int processed = 0;
+                foreach (var script in scriptsToRun)
                 {
                     if (batchCts.Token.IsCancellationRequested) break;
 
-                    // Highlight current button?
-                    // Run script and WAIT
+                    statusLabel.Text = $"Running {processed + 1} of {scriptsToRun.Count}: {script.DisplayName}";
                     await RunScriptAsync(script, batchCts.Token);
+                    processed++;
+                    progressBar.Value = processed;
                 }
             }
             finally
             {
                 btnRunBatch.Enabled = true;
                 chkBatchMode.Enabled = true;
+                btnSelectAll.Enabled = true;
+                btnSelectNone.Enabled = true;
                 btnCancel.Visible = false;
+                progressBar.Visible = false;
+                progressBar.Style = ProgressBarStyle.Marquee;
+                statusLabel.Text = "Batch Execution Finished";
                 Log("--- Batch Execution Finished ---");
+
+                if (batchCts != null) { batchCts.Dispose(); batchCts = null; }
             }
         }
 
@@ -483,8 +641,15 @@ namespace SystemMaintenance
              string scriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "scripts", script.FileName);
              if (File.Exists(scriptPath))
              {
-                 Form viewer = new Form { Text = script.FileName, Size = new Size(600, 500), StartPosition = FormStartPosition.CenterParent };
-                 TextBox txt = new TextBox { Multiline = true, Dock = DockStyle.Fill, ScrollBars = ScrollBars.Vertical, ReadOnly = true, Font = new Font("Consolas", 10), Text = File.ReadAllText(scriptPath) };
+                 Form viewer = new Form { Text = script.FileName, Size = new Size(800, 600), StartPosition = FormStartPosition.CenterParent };
+                 TextBox txt = new TextBox {
+                     Multiline = true,
+                     Dock = DockStyle.Fill,
+                     ScrollBars = ScrollBars.Vertical,
+                     ReadOnly = true,
+                     Font = new Font("Consolas", 11),
+                     Text = File.ReadAllText(scriptPath)
+                 };
                  viewer.Controls.Add(txt);
                  viewer.ShowDialog();
              }
@@ -497,14 +662,29 @@ namespace SystemMaintenance
             FlowLayoutPanel panel = tabs.SelectedTab.Controls.OfType<FlowLayoutPanel>().FirstOrDefault();
             if (panel == null) return;
 
+            string[] tokens = string.IsNullOrWhiteSpace(query)
+                ? new string[0]
+                : query.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+
             panel.SuspendLayout();
             foreach (Control c in panel.Controls)
             {
                 if (c is Button btn && btn.Tag is ScriptInfo info)
                 {
-                    bool match = string.IsNullOrEmpty(query) ||
-                                 info.DisplayName.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                 info.Description.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0;
+                    bool match = true;
+                    if (tokens.Length > 0)
+                    {
+                        foreach (var token in tokens)
+                        {
+                            bool tokenMatch = info.DisplayName.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                              info.Description.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0;
+                            if (!tokenMatch)
+                            {
+                                match = false;
+                                break;
+                            }
+                        }
+                    }
                     c.Visible = match;
                 }
             }
@@ -537,69 +717,26 @@ namespace SystemMaintenance
             }
         }
 
-        // Wrapper for Async Batch
+        // --- Core Execution Logic ---
+
         private Task RunScriptAsync(ScriptInfo script, CancellationToken token)
         {
             return Task.Run(() => {
                 if (token.IsCancellationRequested) return;
 
-                // We need to run the logic of RunScript but blocking
-                // We'll reuse the logic but adapt it.
-                // Actually, RunScript is void. We need a Task returning version.
-
                 this.Invoke(new Action(() => {
-                     Log($"Starting Batch Item: {script.DisplayName}...");
-                     statusLabel.Text = $"Running: {script.DisplayName}";
-                     progressBar.Visible = true;
+                     Log($"Starting: {script.DisplayName}...");
+                     if (!progressBar.Visible) {
+                        statusLabel.Text = $"Running: {script.DisplayName}";
+                        progressBar.Visible = true;
+                     }
                 }));
 
-                string scriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "scripts", script.FileName);
-                if (!File.Exists(scriptPath)) return;
-
-                ProcessStartInfo psi = new ProcessStartInfo();
-                psi.FileName = "powershell.exe";
-
-                if (script.IsInteractive)
-                {
-                    // Interactive scripts in batch mode just pop up. We can't easily wait for them unless we use WaitForExit on the shell window, which is flaky.
-                    // We'll just launch and move on, or wait?
-                    // Let's wait.
-                    psi.Arguments = $"-NoProfile -ExecutionPolicy Bypass -NoExit -File \"{scriptPath}\"";
-                    psi.UseShellExecute = true;
-                    // Cannot wait effectively for UseShellExecute=true often, but Process.Start returns a handle.
-                }
-                else
-                {
-                    psi.Arguments = $"-NoProfile -ExecutionPolicy Bypass -NonInteractive -File \"{scriptPath}\"";
-                    psi.RedirectStandardOutput = true;
-                    psi.RedirectStandardError = true;
-                    psi.UseShellExecute = false;
-                    psi.CreateNoWindow = true;
-                }
-
-                using (Process p = new Process())
-                {
-                    lock (processLock) { currentProcess = p; }
-                    p.StartInfo = psi;
-
-                    if (!script.IsInteractive) {
-                        p.OutputDataReceived += (s, e) => { if (e.Data != null) Log(e.Data); };
-                        p.ErrorDataReceived += (s, e) => { if (e.Data != null) Log("ERR: " + e.Data); };
-                    }
-
-                    p.Start();
-                    if (!script.IsInteractive) {
-                        p.BeginOutputReadLine();
-                        p.BeginErrorReadLine();
-                    }
-
-                    p.WaitForExit();
-                    lock (processLock) { currentProcess = null; }
-                }
+                ExecuteScriptInternal(script);
 
                 this.Invoke(new Action(() => {
                      Log($"Completed: {script.DisplayName}");
-                     statusLabel.Text = "Ready";
+                     if (!isBatchMode) statusLabel.Text = "Ready";
                 }));
             });
         }
@@ -617,6 +754,20 @@ namespace SystemMaintenance
             progressBar.Visible = true;
             btnCancel.Visible = !script.IsInteractive;
 
+            System.Threading.Tasks.Task.Run(() => {
+                ExecuteScriptInternal(script);
+                this.Invoke(new Action(() => {
+                    Log($"Finished: {script.DisplayName}");
+                    Log("------------------------------------------------");
+                    statusLabel.Text = "Ready";
+                    progressBar.Visible = false;
+                    btnCancel.Visible = false;
+                }));
+            });
+        }
+
+        private void ExecuteScriptInternal(ScriptInfo script)
+        {
             string scriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "scripts", script.FileName);
             if (!File.Exists(scriptPath))
             {
@@ -625,10 +776,9 @@ namespace SystemMaintenance
 
             if (!File.Exists(scriptPath))
             {
-                Log($"Error: Script file not found: {script.FileName}");
-                statusLabel.Text = "Error: File not found";
-                progressBar.Visible = false;
-                btnCancel.Visible = false;
+                this.Invoke(new Action(() => {
+                    Log($"Error: Script file not found: {script.FileName}");
+                }));
                 return;
             }
 
@@ -637,16 +787,19 @@ namespace SystemMaintenance
                 ProcessStartInfo psi = new ProcessStartInfo();
                 psi.FileName = "powershell.exe";
 
+                // Try to use UTF8 to catch emoji/unicode logs
+                psi.StandardOutputEncoding = Encoding.UTF8;
+                psi.StandardErrorEncoding = Encoding.UTF8;
+
                 if (script.IsInteractive)
                 {
                     psi.Arguments = $"-NoProfile -ExecutionPolicy Bypass -NoExit -File \"{scriptPath}\"";
                     psi.UseShellExecute = true;
 
                     Process.Start(psi);
-                    Log($"Launched {script.DisplayName} in external window.");
-                    statusLabel.Text = "Ready";
-                    progressBar.Visible = false;
-                    btnCancel.Visible = false;
+                    this.Invoke(new Action(() => {
+                        Log($"Launched {script.DisplayName} in external window.");
+                    }));
                 }
                 else
                 {
@@ -656,36 +809,26 @@ namespace SystemMaintenance
                     psi.UseShellExecute = false;
                     psi.CreateNoWindow = true;
 
-                    System.Threading.Tasks.Task.Run(() => {
-                        using (Process p = new Process())
-                        {
-                            lock (processLock) { currentProcess = p; }
-                            p.StartInfo = psi;
-                            p.OutputDataReceived += (s, e) => { if (e.Data != null) Log(e.Data); };
-                            p.ErrorDataReceived += (s, e) => { if (e.Data != null) Log("ERR: " + e.Data); };
+                    using (Process p = new Process())
+                    {
+                        lock (processLock) { currentProcess = p; }
+                        p.StartInfo = psi;
+                        p.OutputDataReceived += (s, e) => { if (e.Data != null) Log(e.Data); };
+                        p.ErrorDataReceived += (s, e) => { if (e.Data != null) Log("ERR: " + e.Data); };
 
-                            p.Start();
-                            p.BeginOutputReadLine();
-                            p.BeginErrorReadLine();
-                            p.WaitForExit();
-
-                            this.Invoke(new Action(() => {
-                                Log($"Finished: {script.DisplayName}");
-                                Log("------------------------------------------------");
-                                statusLabel.Text = "Ready";
-                                progressBar.Visible = false;
-                                btnCancel.Visible = false;
-                                lock (processLock) { currentProcess = null; }
-                            }));
-                        }
-                    });
+                        p.Start();
+                        p.BeginOutputReadLine();
+                        p.BeginErrorReadLine();
+                        p.WaitForExit();
+                        lock (processLock) { currentProcess = null; }
+                    }
                 }
             }
             catch (Exception ex)
             {
-                Log($"Error executing script: {ex.Message}");
-                progressBar.Visible = false;
-                btnCancel.Visible = false;
+                this.Invoke(new Action(() => {
+                    Log($"Error executing script: {ex.Message}");
+                }));
             }
         }
 
@@ -693,14 +836,16 @@ namespace SystemMaintenance
         {
             string line = $"[{DateTime.Now.ToShortTimeString()}] {msg}";
 
-            // UI Thread
             if (txtLog.InvokeRequired) { txtLog.Invoke(new Action<string>(Log), msg); return; }
+
             txtLog.AppendText(line + "\r\n");
 
-            // File Log (Simple append)
+            txtLog.SelectionStart = txtLog.Text.Length;
+            txtLog.ScrollToCaret();
+
             try {
                 string logDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs");
-                Directory.CreateDirectory(logDir);
+                if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
                 File.AppendAllText(Path.Combine(logDir, $"log_{DateTime.Now:yyyyMMdd}.txt"), line + Environment.NewLine);
             } catch { }
         }
@@ -731,21 +876,23 @@ namespace SystemMaintenance
             {
                 page.BackColor = backColor;
                 page.ForeColor = foreColor;
+
+                // Refresh buttons inside panel
+                foreach(Control c in page.Controls) {
+                    if (c is FlowLayoutPanel p) {
+                        foreach(Control btn in p.Controls) {
+                            if (btn is Button b) {
+                                b.BackColor = btnBack;
+                                b.ForeColor = ((ScriptInfo)b.Tag).IsDestructive ? (isDarkMode ? Color.LightCoral : Color.Red) : foreColor;
+                                b.FlatAppearance.BorderColor = btnBorder;
+                            }
+                        }
+                    }
+                }
             }
 
             descPanel.BackColor = panelBack;
             descPanel.ForeColor = foreColor;
-
-            foreach (Button btn in allButtons)
-            {
-                btn.BackColor = btnBack;
-                if (((ScriptInfo)btn.Tag).IsDestructive)
-                    btn.ForeColor = isDarkMode ? Color.LightCoral : Color.Red;
-                else
-                    btn.ForeColor = foreColor;
-
-                btn.FlatAppearance.BorderColor = btnBorder;
-            }
 
             statusStrip.BackColor = isDarkMode ? Color.Black : Color.WhiteSmoke;
             statusStrip.ForeColor = isDarkMode ? Color.White : Color.Black;
@@ -779,9 +926,6 @@ namespace SystemMaintenance
         public string Description { get; set; }
         public bool IsInteractive { get; set; }
         public bool IsDestructive { get; set; }
-
-        // UI Helpers
-        public CheckBox BatchCheckBox { get; set; }
 
         public ScriptInfo(string file, string name, string desc, bool interactive = false, bool destructive = false)
         {

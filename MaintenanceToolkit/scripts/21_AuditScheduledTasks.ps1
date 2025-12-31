@@ -1,7 +1,19 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
-Write-Header "Auditing Non-Microsoft Scheduled Tasks"
+Write-Header "Auditing Scheduled Tasks"
 
-Get-ScheduledTask | Where-Object { $_.Author -notmatch "Microsoft" -and $_.Author -ne $null } | Select-Object TaskName, Author, State | Format-Table -AutoSize
+try {
+    Write-Log "Listing non-Microsoft Scheduled Tasks..." "Cyan"
+    $tasks = Get-ScheduledTask | Where-Object { $_.Author -notmatch "Microsoft" -and $_.Author -notmatch "Windows" }
 
-Write-Host "Review this list. If you see 'Author: System' or random names, investigate." -ForegroundColor Yellow
+    foreach ($t in $tasks) {
+        Write-Log "Task: $($t.TaskName) | State: $($t.State) | Author: $($t.Author)" "White"
+    }
+
+    if ($tasks.Count -eq 0) {
+        Write-Log "No obvious non-Microsoft tasks found." "Green"
+    }
+} catch {
+    Write-Log "Error: $($_.Exception.Message)" "Red"
+}
+Pause-If-Interactive

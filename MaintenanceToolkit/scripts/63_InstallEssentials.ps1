@@ -1,10 +1,27 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
-Write-Header "Installing Essential Apps"
-$apps = @("Google.Chrome", "VideoLAN.VLC", "7zip.7zip", "Notepad++.Notepad++", "Discord.Discord")
+Write-Header "Install Essential Software"
 
-foreach ($app in $apps) {
-    Write-Host "Installing $app..." -ForegroundColor Yellow
-    winget install --id $app -e --silent --accept-package-agreements --accept-source-agreements
+if (-not (Test-IsWingetAvailable)) {
+    Write-Log "Winget not found." "Red"
+    Pause-If-Interactive
+    return
 }
-Write-Host "All Essentials Installed." -ForegroundColor Green
+
+$apps = @(
+    "Google.Chrome",
+    "VideoLAN.VLC",
+    "7zip.7zip",
+    "Notepad++.Notepad++"
+)
+
+try {
+    foreach ($app in $apps) {
+        Write-Log "Installing $app..."
+        winget install --id $app -e --silent --accept-package-agreements --accept-source-agreements
+    }
+    Write-Log "Installation Loop Finished." "Green"
+} catch {
+    Write-Log "Error: $($_.Exception.Message)" "Red"
+}
+Pause-If-Interactive

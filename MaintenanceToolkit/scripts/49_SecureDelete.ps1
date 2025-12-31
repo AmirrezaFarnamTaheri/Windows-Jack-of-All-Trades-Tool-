@@ -1,19 +1,24 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
-$path = Read-Host "Enter full path of file to securely wipe"
-$path = $path -replace '"', ''
+Write-Header "Secure Delete File"
+$file = Read-Host "Enter path to file to securely delete"
 
-if (Test-Path $path) {
-    Write-Host "Wiping file (3 passes)..." -ForegroundColor Yellow
-    $file = Get-Item $path
-    $size = $file.Length
+try {
+    if (Test-Path $file) {
+        Write-Log "Overwriting file with zeros..."
+        $size = (Get-Item $file).Length
+        if ($size -gt 0) {
+            $bytes = New-Object Byte[] $size
+            [IO.File]::WriteAllBytes($file, $bytes)
+        }
 
-    1..3 | ForEach-Object {
-        [IO.File]::WriteAllBytes($path, [byte[]](Get-Random -InputObject (0..255) -Count $size))
+        Write-Log "Deleting file..."
+        Remove-Item $file -Force
+        Write-Log "File Deleted." "Green"
+    } else {
+        Write-Log "File not found." "Red"
     }
-
-    Remove-Item $path -Force
-    Write-Host "File obliterated." -ForegroundColor Green
-} else {
-    Write-Host "File not found." -ForegroundColor Red
+} catch {
+    Write-Log "Error: $($_.Exception.Message)" "Red"
 }
+Pause-If-Interactive

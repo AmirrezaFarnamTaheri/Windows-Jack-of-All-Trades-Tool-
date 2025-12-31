@@ -30,19 +30,53 @@ function Pause-If-Interactive {
 function Test-IsConnected {
     try {
         $ping = Test-Connection -ComputerName "8.8.8.8" -Count 1 -Quiet -ErrorAction SilentlyContinue
-        return $ping
+        if ($ping) { return $true }
+    } catch {}
+
+    # Fallback to HTTP request
+    try {
+        $request = Invoke-WebRequest -Uri "http://www.google.com" -UseBasicParsing -TimeoutSec 3 -ErrorAction SilentlyContinue
+        return ($request.StatusCode -eq 200)
     } catch {
         return $false
     }
 }
 
+function Test-IsWingetAvailable {
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
+        return $true
+    }
+    return $false
+}
+
+function Assert-SystemRestoreEnabled {
+    try {
+        # Check if System Restore is enabled for C:
+        $rpoint = Get-ComputerRestorePoint -ErrorAction SilentlyContinue
+        # This only lists points. We need to enable it.
+        # Check registry or just try enabling it.
+        Enable-ComputerRestore -Drive "C:\" -ErrorAction SilentlyContinue
+        return $true
+    } catch {
+        Write-Log "Warning: Could not enable System Restore." "Yellow"
+        return $false
+    }
+}
+
 function Backup-RegistryKey ($KeyPath, $BackupDir="$env:USERPROFILE\Desktop\RegBackups") {
+    if ([string]::IsNullOrWhiteSpace($KeyPath)) {
+        Write-Log "Error: No registry key path provided for backup." "Red"
+        return
+    }
+
     if (Test-Path $KeyPath) {
         if (-not (Test-Path $BackupDir)) { New-Item -ItemType Directory -Path $BackupDir | Out-Null }
         $Name = ($KeyPath -split "\\")[-1]
         $File = "$BackupDir\$Name-$(Get-Date -Format 'yyyyMMdd-HHmm').reg"
         Start-Process "reg.exe" -ArgumentList "export `"$KeyPath`" `"$File`" /y" -Wait -NoNewWindow
         Write-Log "Backed up registry key '$Name' to $File" "Gray"
+    } else {
+        Write-Log "Warning: Registry key '$KeyPath' not found. Skipping backup." "Yellow"
     }
 }
 

@@ -1,14 +1,16 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
-$file = Read-Host "Drag and drop the file here to verify"
-$file = $file -replace '"', ''
+Write-Header "Verify File Hash"
+$file = Read-Host "Enter path to file"
 
-if (Test-Path $file) {
-    Write-Host "Calculating SHA256 Hash..." -ForegroundColor Yellow
-    $hash = Get-FileHash -Path $file -Algorithm SHA256
-    Write-Host "Hash: $($hash.Hash)" -ForegroundColor Green
-    Set-Clipboard -Value $hash.Hash
-    Write-Host "(Hash copied to clipboard)" -ForegroundColor DarkGray
-} else {
-    Write-Host "File not found." -ForegroundColor Red
+try {
+    if (Test-Path $file) {
+        $hash = Get-FileHash -Path $file -Algorithm SHA256
+        Write-Log "SHA256: $($hash.Hash)" "Cyan"
+    } else {
+        Write-Log "File not found." "Red"
+    }
+} catch {
+    Write-Log "Error: $($_.Exception.Message)" "Red"
 }
+Pause-If-Interactive

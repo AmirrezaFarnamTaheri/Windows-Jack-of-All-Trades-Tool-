@@ -11,8 +11,13 @@ function Set-RegVal ($Path, $Name, $Value, $Type="DWord") {
 }
 
 try {
-    Backup-RegistryKey "HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection"
-    Backup-RegistryKey "HKCU\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo"
+    # Only backup if keys exist to avoid errors
+    if (Test-Path "HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection") {
+        Backup-RegistryKey "HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection"
+    }
+    if (Test-Path "HKCU\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo") {
+        Backup-RegistryKey "HKCU\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo"
+    }
 
     # 1. Advertising ID
     Write-Log "Disabling Advertising ID..."

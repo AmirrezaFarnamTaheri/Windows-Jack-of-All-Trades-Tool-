@@ -1,13 +1,30 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
-Write-Header "Website Blocker (Hosts File)"
+Write-Header "Block Website via Hosts File"
 $site = Read-Host "Enter domain to block (e.g. facebook.com)"
-$hostsPath = "$env:windir\System32\drivers\etc\hosts"
 
-if (-not (Select-String -Path $hostsPath -Pattern $site)) {
-    Add-Content -Path $hostsPath -Value "`n127.0.0.1       $site"
-    Add-Content -Path $hostsPath -Value "127.0.0.1       www.$site"
-    Write-Host "$site is now BLOCKED." -ForegroundColor Red
-} else {
-    Write-Host "$site is already blocked." -ForegroundColor Yellow
+if ([string]::IsNullOrWhiteSpace($site)) {
+    Write-Log "No domain entered." "Red"
+    Pause-If-Interactive
+    Exit
 }
+
+try {
+    $hosts = "$env:WINDIR\System32\drivers\etc\hosts"
+    if (-not (Test-Path $hosts)) {
+        New-Item -Path $hosts -ItemType File -Force | Out-Null
+    }
+
+    $entry = "127.0.0.1       $site"
+    $content = Get-Content $hosts -Raw
+    if ($content -match $site) {
+        Write-Log "$site is already blocked." "Yellow"
+    } else {
+        Add-Content -Path $hosts -Value "`r`n$entry" -Force
+        Write-Log "Blocked $site." "Green"
+        ipconfig /flushdns | Out-Null
+    }
+} catch {
+    Write-Log "Error: $($_.Exception.Message)" "Red"
+}
+Pause-If-Interactive

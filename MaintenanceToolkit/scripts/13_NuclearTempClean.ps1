@@ -1,41 +1,32 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
-Write-Header "Starting Aggressive Temp File Cleanup"
+Write-Header "Nuclear Temporary File Cleanup"
+Write-Log "Warning: This script aggressively cleans temporary files." "Yellow"
 
-$tempPaths = @(
-    $env:TEMP,
-    "$env:SystemRoot\Temp"
+$folders = @(
+    "$env:TEMP",
+    "$env:WINDIR\Temp",
+    "$env:LOCALAPPDATA\Temp"
 )
-$totalFreed = 0
-$filesDeleted = 0
 
-Write-Log "Targeting folders: $($tempPaths -join ', ')" "Yellow"
-
-foreach ($path in $tempPaths) {
-    if (Test-Path $path) {
-        Write-Log "Scanning: $path" "White"
-        $files = Get-ChildItem -Path $path -Recurse -Force -ErrorAction SilentlyContinue
-
-        foreach ($file in $files) {
+foreach ($folder in $folders) {
+    if (Test-Path $folder) {
+        Write-Log "Cleaning $folder..."
+        Get-ChildItem -Path $folder -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object {
             try {
-                if (-not $file.PSIsContainer) {
-                    $size = $file.Length
-                    Remove-Item -Path $file.FullName -Force -ErrorAction Stop
-                    $totalFreed += $size
-                    $filesDeleted++
-                    # Write-Host "Deleted: $($file.Name)" -ForegroundColor DarkGray # Reduce noise
-                }
-            }
-            catch {
-                # Skip in-use
+                Remove-Item -Path $_.FullName -Force -Recurse -ErrorAction Stop
+            } catch {
+                # Ignore locked files
             }
         }
     }
 }
 
-$mbFreed = [math]::round($totalFreed / 1MB, 2)
-Write-Log "--- Cleanup Complete ---" "Green"
-Write-Log "Files Deleted: $filesDeleted" "White"
-Write-Log "Total Space Reclaimed: $mbFreed MB" "Yellow"
+# Clear Prefetch
+Write-Log "Cleaning Prefetch..."
+try {
+    Get-ChildItem -Path "$env:WINDIR\Prefetch" -Force -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+} catch {}
 
+Write-Log "Cleanup Complete." "Green"
 Pause-If-Interactive

@@ -1,56 +1,41 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
-Write-Header "Benchmarking DNS Servers"
-
-if (-not (Test-IsConnected)) {
-    Write-Log "Error: No internet connection detected. Cannot benchmark DNS." "Red"
-    Pause-If-Interactive
-    Exit
-}
-
-Write-Log "Testing response times (Average of 3 queries)..." "Yellow"
+Write-Header "DNS Speed Benchmark"
 
 $targets = @{
-    "Google Primary   " = "8.8.8.8"
-    "Google Secondary " = "8.8.4.4"
-    "Cloudflare Pri   " = "1.1.1.1"
-    "Cloudflare Sec   " = "1.0.0.1"
-    "OpenDNS Home     " = "208.67.222.222"
-    "Quad9 Secure     " = "9.9.9.9"
-    "AdGuard DNS      " = "94.140.14.14"
+    "Google" = "8.8.8.8"
+    "Cloudflare" = "1.1.1.1"
+    "OpenDNS" = "208.67.222.222"
+    "Quad9" = "9.9.9.9"
 }
 
-$results = @()
+Write-Log "Testing DNS Resolution Speed (Average of 5 queries)..." "Cyan"
 
-foreach ($key in $targets.Keys) {
-    $ip = $targets[$key]
-    $totalTime = 0
-    $failures = 0
-    $attempts = 3
+foreach ($name in $targets.Keys) {
+    try {
+        $ip = $targets[$name]
+        $totalTime = 0
+        $count = 5
+        $success = 0
 
-    Write-Host -NoNewline "Testing $key ($ip)... "
-
-    for ($i = 0; $i -lt $attempts; $i++) {
-        try {
-            $time = (Measure-Command {
-                Resolve-DnsName -Name "google.com" -Server $ip -Type A -ErrorAction Stop
-            }).TotalMilliseconds
-            $totalTime += $time
-        } catch {
-            $failures++
+        for ($i=1; $i -le $count; $i++) {
+            $time = Measure-Command {
+                Resolve-DnsName -Name "google.com" -Server $ip -Type A -ErrorAction SilentlyContinue
+            }
+            if ($time.TotalMilliseconds -gt 0) { # Simple check if it ran
+                $totalTime += $time.TotalMilliseconds
+                $success++
+            }
         }
-    }
 
-    if ($failures -eq $attempts) {
-        Write-Host "TIMEOUT" -ForegroundColor Red
-    } else {
-        $avg = [math]::Round($totalTime / ($attempts - $failures), 2)
-        Write-Host "$avg ms" -ForegroundColor Green
-        $results += [PSCustomObject]@{ Provider = $key; IP = $ip; TimeMs = $avg }
+        if ($success -gt 0) {
+            $avg = [math]::Round($totalTime / $success, 2)
+            Write-Log "$name ($ip): $avg ms" "White"
+        } else {
+            Write-Log "$name ($ip): Timeout/Failed" "Red"
+        }
+    } catch {
+        Write-Log "Error testing $name" "Red"
     }
 }
-
-Write-Log "`n--- Best Performers ---" "Cyan"
-$results | Sort-Object TimeMs | Select-Object -First 3 | Format-Table -AutoSize
-
 Pause-If-Interactive

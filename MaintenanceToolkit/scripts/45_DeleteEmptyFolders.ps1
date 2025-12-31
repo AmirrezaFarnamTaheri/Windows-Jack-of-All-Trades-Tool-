@@ -1,19 +1,32 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
-Write-Header "Cleaning Empty Folders"
-$target = Read-Host "Enter full path to scan (e.g. C:\Users\YourName\Documents) - WARNING: Be specific!"
+Write-Header "Deleting Empty Folders"
+$target = Read-Host "Enter folder path to scan (default is user root)"
+if ([string]::IsNullOrWhiteSpace($target)) { $target = $env:USERPROFILE }
 
-if (Test-Path $target) {
-    Write-Host "Scanning $target..." -ForegroundColor Yellow
-    $folders = Get-ChildItem -Path $target -Recurse -Directory | Sort-Object FullName -Descending
+try {
+    if (Test-Path $target) {
+        Write-Log "Scanning $target for empty folders..."
 
-    foreach ($folder in $folders) {
-        if ((Get-ChildItem $folder.FullName -Recurse -Force).Count -eq 0) {
-            Remove-Item $folder.FullName -Force
-            Write-Host "Deleted Empty: $($folder.FullName)" -ForegroundColor DarkGray
+        # Sort by length descending to delete nested empty folders correctly
+        $dirs = Get-ChildItem -Path $target -Recurse -Directory -Force -ErrorAction SilentlyContinue |
+                Sort-Object -Property FullName -Descending
+
+        $count = 0
+        foreach ($dir in $dirs) {
+            try {
+                if ((Get-ChildItem -Path $dir.FullName -Force -ErrorAction SilentlyContinue | Measure-Object).Count -eq 0) {
+                    Remove-Item -Path $dir.FullName -Force -ErrorAction SilentlyContinue
+                    Write-Log "Deleted: $($dir.FullName)" "Gray"
+                    $count++
+                }
+            } catch {}
         }
+        Write-Log "Deleted $count empty folders." "Green"
+    } else {
+        Write-Log "Path not found." "Red"
     }
-    Write-Host "Done." -ForegroundColor Green
-} else {
-    Write-Host "Invalid path." -ForegroundColor Red
+} catch {
+    Write-Log "Error: $($_.Exception.Message)" "Red"
 }
+Pause-If-Interactive

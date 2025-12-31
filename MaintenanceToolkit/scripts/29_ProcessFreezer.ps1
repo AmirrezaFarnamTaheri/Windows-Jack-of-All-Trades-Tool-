@@ -1,38 +1,55 @@
 . "$PSScriptRoot/lib/Common.ps1"
-# Usage: Run script, type Process Name (e.g., chrome), select Suspend or Resume.
 Assert-Admin
+Write-Header "Process Freezer"
+Write-Log "Suspends a process to free resources without closing it."
+$name = Read-Host "Enter Process Name (e.g. chrome)"
+
+# Define P/Invoke for Suspend/Resume
 $code = @"
-    [DllImport("kernel32.dll")] public static extern IntPtr OpenThread(int dwDesiredAccess, bool bInheritHandle, int dwThreadId);
-    [DllImport("kernel32.dll")] public static extern int SuspendThread(IntPtr hThread);
-    [DllImport("kernel32.dll")] public static extern int ResumeThread(IntPtr hThread);
-    [DllImport("kernel32.dll")] public static extern int CloseHandle(IntPtr hObject);
+using System;
+using System.Runtime.InteropServices;
+
+public class ProcessUtil {
+    [DllImport("kernel32.dll")]
+    public static extern IntPtr OpenProcess(int dwDesiredAccess, bool bInheritHandle, int dwProcessId);
+
+    [DllImport("ntdll.dll")]
+    public static extern uint NtSuspendProcess(IntPtr processHandle);
+
+    [DllImport("ntdll.dll")]
+    public static extern uint NtResumeProcess(IntPtr processHandle);
+
+    [DllImport("kernel32.dll")]
+    public static extern bool CloseHandle(IntPtr handle);
+}
 "@
-$func = Add-Type -MemberDefinition $code -Name "Win32" -Namespace Win32 -PassThru
 
-function Suspend-Process ($Name) {
-    Get-Process -Name $Name -ErrorAction SilentlyContinue | ForEach-Object {
-        $_.Threads | ForEach-Object {
-            $h = $func::OpenThread(2, $false, $_.Id)
-            $func::SuspendThread($h)
-            $func::CloseHandle($h)
-        }
-    }
-    Write-Host "$Name Suspended." -ForegroundColor Yellow
+try {
+    Add-Type $code -ErrorAction SilentlyContinue
+} catch {
+    # Type might already be added in session
 }
 
-function Resume-Process ($Name) {
-    Get-Process -Name $Name -ErrorAction SilentlyContinue | ForEach-Object {
-        $_.Threads | ForEach-Object {
-            $h = $func::OpenThread(2, $false, $_.Id)
-            $func::ResumeThread($h)
-            $func::CloseHandle($h)
+try {
+    $procs = Get-Process -Name $name -ErrorAction SilentlyContinue
+    if ($procs) {
+        foreach ($p in $procs) {
+            $handle = [ProcessUtil]::OpenProcess(0x0800, $false, $p.Id) # 0x0800 = SUSPEND_RESUME
+
+            if ($handle -ne [IntPtr]::Zero) {
+                Write-Log "Suspending $($p.ProcessName) (PID: $($p.Id))..."
+                [ProcessUtil]::NtSuspendProcess($handle) | Out-Null
+                [ProcessUtil]::CloseHandle($handle) | Out-Null
+                Write-Log "Success." "Green"
+            } else {
+                Write-Log "Failed to open handle for PID $($p.Id)." "Red"
+            }
         }
+        Write-Log "`nTo Resume, restart the app or use Resource Monitor." "Yellow"
+    } else {
+        Write-Log "Process '$name' not found." "Yellow"
     }
-    Write-Host "$Name Resumed." -ForegroundColor Green
+} catch {
+    Write-Log "Error: $($_.Exception.Message)" "Red"
 }
-
-$proc = Read-Host "Enter Process Name (e.g. chrome, notepad)"
-$action = Read-Host "Type 'S' to Suspend or 'R' to Resume"
-
-if ($action -eq "S") { Suspend-Process $proc }
-elseif ($action -eq "R") { Resume-Process $proc }
+Pause-If-Interactive

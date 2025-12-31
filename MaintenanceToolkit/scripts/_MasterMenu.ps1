@@ -1,23 +1,17 @@
 . "$PSScriptRoot/lib/Common.ps1"
 # Ultimate System Maintenance Menu
-# Check for Administrator privileges
-if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]"Administrator")) {
-    Write-Host "Error: This script requires Administrator privileges." -ForegroundColor Red
-    Write-Host "Please run PowerShell as Administrator." -ForegroundColor Yellow
-    if (-not [Console]::IsInputRedirected) { Pause }
-    Exit
-}
-# Auto-detects scripts in the current folder
+
+Assert-Admin
 $ScriptPath = $PSScriptRoot
 
 function Run-Script ($Number) {
     $script = Get-ChildItem "$ScriptPath\$Number*.ps1" | Select-Object -First 1
     if ($script) {
         Clear-Host
-        Write-Host "Launching: $($script.Name)..." -ForegroundColor Cyan
+        Write-Log "Launching: $($script.Name)..." "Cyan"
         & $script.FullName
     } else {
-        Write-Host "Error: Script #$Number not found." -ForegroundColor Red
+        Write-Log "Error: Script #$Number not found." "Red"
         Start-Sleep -Seconds 1
     }
 }
@@ -36,7 +30,7 @@ function Show-Help {
     } elseif (Test-Path "$PSScriptRoot\HELP.md") {
         Get-Content "$PSScriptRoot\HELP.md" | More
     } else {
-        Write-Host "Help file not found." -ForegroundColor Red
+        Write-Log "Help file not found." "Red"
     }
     if (-not [Console]::IsInputRedirected) { Pause }
 }
@@ -67,6 +61,7 @@ function Show-SubMenu ($Category) {
             Write-Host "36. Clear Pending Updates (Boot Loop Fix)"
             Write-Host "38. Restart Audio Services"
             Write-Host "51. Fix 'Access Denied' Permissions"
+            Write-Host "56. Clean PATH Variables"
             Write-Host "62. Fix Windows Store"
         }
         "HARDWARE" {
@@ -80,6 +75,7 @@ function Show-SubMenu ($Category) {
             Write-Host "39. Sleep Study (Battery Drain)"
             Write-Host "40. RAM Memory Test (Reboot)"
             Write-Host "41. CPU Stress Test"
+            Write-Host "52. Read Chkdsk Logs"
             Write-Host "64. Check Virtualization (VT-x)"
             Write-Host "65. Disable USB Suspend (Fix Lag)"
         }
@@ -100,6 +96,7 @@ function Show-SubMenu ($Category) {
             Write-Host "24. Get BitLocker Keys"
             Write-Host "31. USB Write Protection"
             Write-Host "32. Verify File Hash"
+            Write-Host "33. Enable God Mode"
             Write-Host "42. Audit Non-Microsoft Services"
             Write-Host "48. Audit User Accounts"
             Write-Host "49. Securely Wipe File (DoD)"
@@ -114,7 +111,6 @@ function Show-SubMenu ($Category) {
             Write-Host "27. Check System Stability (Crashes)"
             Write-Host "28. Get BIOS Windows Key"
             Write-Host "29. Process Freezer"
-            Write-Host "33. Enable God Mode"
             Write-Host "43. Analyze Boot Time"
             Write-Host "44. Export Installed App List"
             Write-Host "46. Quick Backup (Robocopy)"

@@ -1,14 +1,19 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
-Write-Header "Exporting Installed Software List"
+Write-Header "Exporting Installed Apps"
 
-$path = "$env:USERPROFILE\Desktop\InstalledApps.csv"
+$out = "$env:USERPROFILE\Desktop\InstalledApps_$(Get-Date -Format 'yyyyMMdd').csv"
 
-$keys = "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*", "HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
-Get-ItemProperty $keys -ErrorAction SilentlyContinue |
-    Select-Object DisplayName, DisplayVersion, Publisher, InstallDate |
-    Where-Object { $_.DisplayName -ne $null } |
-    Sort-Object DisplayName |
-    Export-Csv -Path $path -NoTypeInformation
+try {
+    Write-Log "Gathering App List (Registry + Winget)..."
+    # Basic Reg Method
+    $apps = Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\* | Select-Object DisplayName, DisplayVersion, Publisher, InstallDate
+    $apps += Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* | Select-Object DisplayName, DisplayVersion, Publisher, InstallDate
 
-Write-Host "List saved to Desktop as 'InstalledApps.csv'" -ForegroundColor Green
+    $apps | Where-Object { $_.DisplayName } | Export-Csv -Path $out -NoTypeInformation -Encoding UTF8
+
+    Write-Log "List exported to: $out" "Green"
+} catch {
+    Write-Log "Error: $($_.Exception.Message)" "Red"
+}
+Pause-If-Interactive
