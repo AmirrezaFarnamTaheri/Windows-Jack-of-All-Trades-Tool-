@@ -15,6 +15,22 @@ jobs:
     - name: Setup MSBuild
       uses: microsoft/setup-msbuild@v1.1
 
+    - name: Install PSScriptAnalyzer
+      shell: powershell
+      run: |
+        Install-Module -Name PSScriptAnalyzer -Force -SkipPublisherCheck
+
+    - name: Lint PowerShell Scripts
+      shell: powershell
+      run: |
+        $results = Invoke-ScriptAnalyzer -Path "MaintenanceToolkit/scripts" -Severity Error -Recurse
+        if ($results) {
+            $results | Format-Table
+            Write-Error "Script Analyzer found errors."
+        } else {
+            Write-Host "No script errors found."
+        }
+
     - name: Build Application
       run: |
         cd MaintenanceToolkit

@@ -1,11 +1,6 @@
+. "$PSScriptRoot/lib/Common.ps1"
 # Usage: Run script, type Process Name (e.g., chrome), select Suspend or Resume.
-# Check for Administrator privileges
-if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]"Administrator")) {
-    Write-Host "Error: This script requires Administrator privileges." -ForegroundColor Red
-    Write-Host "Please run PowerShell as Administrator." -ForegroundColor Yellow
-    if (-not [Console]::IsInputRedirected) { Pause }
-    Exit
-}
+Assert-Admin
 $code = @"
     [DllImport("kernel32.dll")] public static extern IntPtr OpenThread(int dwDesiredAccess, bool bInheritHandle, int dwThreadId);
     [DllImport("kernel32.dll")] public static extern int SuspendThread(IntPtr hThread);

@@ -1,3 +1,4 @@
+. "$PSScriptRoot/lib/Common.ps1"
 # Ultimate System Maintenance Menu
 # Check for Administrator privileges
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]"Administrator")) {

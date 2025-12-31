@@ -1,11 +1,6 @@
-# Check for Administrator privileges
-if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]"Administrator")) {
-    Write-Host "Error: This script requires Administrator privileges." -ForegroundColor Red
-    Write-Host "Please run PowerShell as Administrator." -ForegroundColor Yellow
-    if (-not [Console]::IsInputRedirected) { Pause }
-    Exit
-}
-Write-Host "--- Analyzing Last Boot Time ---" -ForegroundColor Cyan
+. "$PSScriptRoot/lib/Common.ps1"
+Assert-Admin
+Write-Header "Analyzing Last Boot Time"
 
 $bootEvent = Get-WinEvent -LogName "Microsoft-Windows-Diagnostics-Performance/Operational" -ErrorAction SilentlyContinue | Where-Object {$_.Id -eq 100} | Select-Object -First 1
 

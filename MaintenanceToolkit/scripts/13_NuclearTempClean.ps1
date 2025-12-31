@@ -1,29 +1,41 @@
-# Check for Administrator privileges
-if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]"Administrator")) {
-    Write-Host "Error: This script requires Administrator privileges." -ForegroundColor Red
-    Write-Host "Please run PowerShell as Administrator." -ForegroundColor Yellow
-    if (-not [Console]::IsInputRedirected) { Pause }
-    Exit
-}
-Write-Host "--- Starting Aggressive Temp File Cleanup ---" -ForegroundColor Cyan
+. "$PSScriptRoot/lib/Common.ps1"
+Assert-Admin
+Write-Header "Starting Aggressive Temp File Cleanup"
 
-$tempPath = $env:TEMP
+$tempPaths = @(
+    $env:TEMP,
+    "$env:SystemRoot\Temp"
+)
 $totalFreed = 0
+$filesDeleted = 0
 
-$files = Get-ChildItem -Path $tempPath -Recurse -Force -ErrorAction SilentlyContinue
+Write-Log "Targeting folders: $($tempPaths -join ', ')" "Yellow"
 
-foreach ($file in $files) {
-    try {
-        $size = $file.Length
-        Remove-Item -Path $file.FullName -Force -Recurse -ErrorAction Stop
-        $totalFreed += $size
-        Write-Host "Deleted: $($file.Name)" -ForegroundColor DarkGray
-    }
-    catch {
-        # Skip in-use
+foreach ($path in $tempPaths) {
+    if (Test-Path $path) {
+        Write-Log "Scanning: $path" "White"
+        $files = Get-ChildItem -Path $path -Recurse -Force -ErrorAction SilentlyContinue
+
+        foreach ($file in $files) {
+            try {
+                if (-not $file.PSIsContainer) {
+                    $size = $file.Length
+                    Remove-Item -Path $file.FullName -Force -ErrorAction Stop
+                    $totalFreed += $size
+                    $filesDeleted++
+                    # Write-Host "Deleted: $($file.Name)" -ForegroundColor DarkGray # Reduce noise
+                }
+            }
+            catch {
+                # Skip in-use
+            }
+        }
     }
 }
 
 $mbFreed = [math]::round($totalFreed / 1MB, 2)
-Write-Host "`n--- Cleanup Complete ---" -ForegroundColor Green
-Write-Host "Total Space Reclaimed: $mbFreed MB" -ForegroundColor Yellow
+Write-Log "--- Cleanup Complete ---" "Green"
+Write-Log "Files Deleted: $filesDeleted" "White"
+Write-Log "Total Space Reclaimed: $mbFreed MB" "Yellow"
+
+Pause-If-Interactive

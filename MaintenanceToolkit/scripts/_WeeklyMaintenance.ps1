@@ -1,3 +1,4 @@
+. "$PSScriptRoot/lib/Common.ps1"
 # Define the path to the toolkit relative to this script
 # Check for Administrator privileges
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]"Administrator")) {

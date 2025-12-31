@@ -3,6 +3,16 @@
 ## Overview
 This toolkit provides a set of automated scripts to maintain, repair, and optimize Windows systems. It includes both a Command-Line Interface (CLI) and a Graphical User Interface (GUI).
 
+## NEW: Batch Mode
+You can now run multiple scripts sequentially!
+1. Click the **"Enable Batch Mode"** toggle in the top-right corner.
+2. Checkboxes will appear on all script buttons.
+3. Select the tools you want to run.
+4. Click the green **"RUN SELECTED"** button at the bottom.
+5. The toolkit will execute them one by one.
+
+*Note: Interactive scripts (marked with `*`) may still open separate windows during batch execution.*
+
 ## Categories
 
 ### 1. CLEAN
@@ -40,6 +50,9 @@ General purpose tools.
 - **Update All Software:** Uses `winget` to update all installed applications.
 - **God Mode:** Creates a folder with shortcuts to all Windows administrative settings.
 - **Process Freezer:** Temporarily suspends resource-heavy processes.
+
+## Logging
+Activity logs are now automatically saved to the `logs/` directory in the application folder.
 
 ## Troubleshooting
 - **Admin Rights:** All scripts require Administrator privileges. Right-click and "Run as Administrator".

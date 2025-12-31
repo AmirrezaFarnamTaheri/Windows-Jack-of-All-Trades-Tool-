@@ -1,11 +1,6 @@
-# Check for Administrator privileges
-if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]"Administrator")) {
-    Write-Host "Error: This script requires Administrator privileges." -ForegroundColor Red
-    Write-Host "Please run PowerShell as Administrator." -ForegroundColor Yellow
-    if (-not [Console]::IsInputRedirected) { Pause }
-    Exit
-}
-Write-Host "--- Creating System Restore Point ---" -ForegroundColor Cyan
+. "$PSScriptRoot/lib/Common.ps1"
+Assert-Admin
+Write-Header "Creating System Restore Point"
 try {
     Checkpoint-Computer -Description "CleanUp_PreStart" -RestorePointType "MODIFY_SETTINGS" -ErrorAction Stop
     Write-Host "Success: Restore Point 'CleanUp_PreStart' created." -ForegroundColor Green
