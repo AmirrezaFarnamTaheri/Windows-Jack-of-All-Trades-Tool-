@@ -3,13 +3,20 @@
 ## Overview
 This toolkit provides a set of automated scripts to maintain, repair, and optimize Windows systems. It includes both a Command-Line Interface (CLI) and a Graphical User Interface (GUI).
 
-## NEW: Batch Mode
+## NEW FEATURES (v66+)
+- **Favorites Tab:** Right-click any script button to add it to your "Favorites" tab for quick access.
+- **Save Logs:** You can now manually save the execution log to a text file using the "Save Log" button.
+- **Improved Search:** Search now supports multiple terms (e.g., "disk clean" finds "Deep Disk Cleanup").
+- **Drive Info:** The header now displays free space on the C: drive.
+
+## Batch Mode
 You can now run multiple scripts sequentially!
-1. Click the **"Enable Batch Mode"** toggle in the top-right corner.
-2. Checkboxes will appear on all script buttons.
-3. Select the tools you want to run.
-4. Click the green **"RUN SELECTED"** button at the bottom.
-5. The toolkit will execute them one by one.
+1. Click the **"Batch Mode"** toggle in the top-right corner.
+2. Use **"All"** or **"None"** buttons to quickly select scripts.
+3. Checkboxes will appear on all script buttons.
+4. Select the tools you want to run.
+5. Click the green **"RUN SELECTED"** button at the bottom.
+6. The toolkit will execute them one by one.
 
 *Note: Interactive scripts (marked with `*`) may still open separate windows during batch execution.*
 
@@ -19,19 +26,21 @@ You can now run multiple scripts sequentially!
 Scripts focused on freeing up disk space and removing unnecessary files.
 - **Deep Disk Cleanup:** Runs the Windows Disk Cleanup utility with all options enabled.
 - **Nuclear Temp Clean:** Aggressively deletes temp files from all users (Use with caution).
-- **Safe Debloat:** Removes pre-installed bloatware that is safe to remove.
+- **Safe Debloat:** Removes pre-installed bloatware that is safe to remove (junk apps only).
 
 ### 2. REPAIR
 Scripts to fix common Windows issues.
-- **System Repair (SFC/DISM):** The standard "first step" for fixing Windows corruption.
+- **System Repair (SFC/DISM):** The standard "first step" for fixing Windows corruption. Checks internet connectivity first.
 - **Reset Windows Update:** Clears the `SoftwareDistribution` folder to fix stuck updates.
 - **Fix Printer:** Restarts the Spooler service to clear stuck print jobs.
+- **Restore Context Menu:** Restores the classic right-click menu on Windows 11.
 
 ### 3. HARDWARE
 Diagnostics and information tools.
 - **Battery Health Report:** Generates an HTML report about battery capacity and usage.
 - **Check Disk Health:** Uses SMART data to predict drive failure.
 - **CPU Stress Test:** Puts the CPU under load to test cooling and stability.
+- **Get BitLocker Keys:** Exports recovery keys to a text file on the Desktop.
 
 ### 4. NETWORK
 Tools to optimize and troubleshoot internet connections.
@@ -44,15 +53,17 @@ Tools to enhance privacy and security.
 - **Privacy Hardening:** Disables common telemetry and tracking features.
 - **Verify File Hash:** specific file integrity check.
 - **Secure Delete:** Overwrites files multiple times to prevent recovery.
+- **Panic Button:** Immediately mutes audio, clears clipboard, and minimizes all windows.
 
 ### 6. UTILITIES
 General purpose tools.
 - **Update All Software:** Uses `winget` to update all installed applications.
 - **God Mode:** Creates a folder with shortcuts to all Windows administrative settings.
 - **Process Freezer:** Temporarily suspends resource-heavy processes.
+- **Sleep Timer:** Schedules a shutdown.
 
 ## Logging
-Activity logs are now automatically saved to the `logs/` directory in the application folder.
+Activity logs are automatically saved to the `logs/` directory in the application folder.
 
 ## Troubleshooting
 - **Admin Rights:** All scripts require Administrator privileges. Right-click and "Run as Administrator".
@@ -60,5 +71,5 @@ Activity logs are now automatically saved to the `logs/` directory in the applic
 - **Antivirus:** Some "debloat" or "password recovery" scripts may be flagged by antivirus software. This is a false positive.
 
 ## About
-Version: 65
+Version: 67 (Refined)
 License: MIT

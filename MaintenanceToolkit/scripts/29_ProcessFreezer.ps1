@@ -4,24 +4,50 @@ Write-Header "Process Freezer"
 Write-Log "Suspends a process to free resources without closing it."
 $name = Read-Host "Enter Process Name (e.g. chrome)"
 
+# Define P/Invoke for Suspend/Resume
+$code = @"
+using System;
+using System.Runtime.InteropServices;
+
+public class ProcessUtil {
+    [DllImport("kernel32.dll")]
+    public static extern IntPtr OpenProcess(int dwDesiredAccess, bool bInheritHandle, int dwProcessId);
+
+    [DllImport("ntdll.dll")]
+    public static extern uint NtSuspendProcess(IntPtr processHandle);
+
+    [DllImport("ntdll.dll")]
+    public static extern uint NtResumeProcess(IntPtr processHandle);
+
+    [DllImport("kernel32.dll")]
+    public static extern bool CloseHandle(IntPtr handle);
+}
+"@
+
+try {
+    Add-Type $code -ErrorAction SilentlyContinue
+} catch {
+    # Type might already be added in session
+}
+
 try {
     $procs = Get-Process -Name $name -ErrorAction SilentlyContinue
     if ($procs) {
         foreach ($p in $procs) {
-            # Suspend-Process is not native until PS 6+. For WinPS 5.1, we need C# or PsSuspend.
-            # Using simple fallback or just warning.
-            # Actually, standard PS 5.1 doesn't have Suspend-Process.
-            # We will rely on user having adequate PS or warn.
-            if (Get-Command Suspend-Process -ErrorAction SilentlyContinue) {
-                Suspend-Process -Id $p.Id
-                Write-Log "Suspended $($p.Id)." "Green"
+            $handle = [ProcessUtil]::OpenProcess(0x0800, $false, $p.Id) # 0x0800 = SUSPEND_RESUME
+
+            if ($handle -ne [IntPtr]::Zero) {
+                Write-Log "Suspending $($p.ProcessName) (PID: $($p.Id))..."
+                [ProcessUtil]::NtSuspendProcess($handle) | Out-Null
+                [ProcessUtil]::CloseHandle($handle) | Out-Null
+                Write-Log "Success." "Green"
             } else {
-                Write-Log "Suspend-Process cmdlet not available (Requires PowerShell 6+ or module)." "Red"
-                break
+                Write-Log "Failed to open handle for PID $($p.Id)." "Red"
             }
         }
+        Write-Log "`nTo Resume, restart the app or use Resource Monitor." "Yellow"
     } else {
-        Write-Log "Process not found." "Yellow"
+        Write-Log "Process '$name' not found." "Yellow"
     }
 } catch {
     Write-Log "Error: $($_.Exception.Message)" "Red"
