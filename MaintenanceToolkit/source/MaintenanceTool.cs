@@ -26,11 +26,15 @@ namespace SystemMaintenance
         private StatusStrip statusStrip;
         private ToolStripStatusLabel statusLabel;
         private ToolStripProgressBar progressBar;
-        private List<Panel> allScriptCards = new List<Panel>();
         private TextBox txtSearch;
         private SplitContainer splitContainer;
         private Button btnCancel;
         private Button btnDarkMode;
+
+        // Caches
+        private Dictionary<string, Panel> scriptCardCache = new Dictionary<string, Panel>();
+        private Panel dashboardPanel; // Cached Dashboard
+        private Panel helpPanel;      // Cached Help
 
         // Data
         private Dictionary<string, List<ScriptInfo>> categories = new Dictionary<string, List<ScriptInfo>>();
@@ -177,6 +181,7 @@ namespace SystemMaintenance
 
             // Script Flow Panel
             scriptsPanel = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoScroll = true, Padding = new Padding(10) };
+            scriptsPanel.Resize += ScriptsPanel_Resize; // Handle resizing for full-width panels
             splitContainer.Panel1.Controls.Add(scriptsPanel);
 
             // Logs
@@ -208,6 +213,22 @@ namespace SystemMaintenance
             this.Controls.Add(statusStrip);
         }
 
+        private void ScriptsPanel_Resize(object sender, EventArgs e)
+        {
+            // Responsive width adjustment for full-width panels (Dashboard, Help)
+            // Defensive check for small widths to avoid exceptions
+            if (scriptsPanel.Controls.Count > 0 && scriptsPanel.Width > 40)
+            {
+                foreach(Control c in scriptsPanel.Controls)
+                {
+                    if (c == dashboardPanel || c == helpPanel)
+                    {
+                        c.Width = scriptsPanel.Width - 40;
+                    }
+                }
+            }
+        }
+
         // --- Layout Helpers ---
         private Button CreateSidebarButton(string text)
         {
@@ -236,14 +257,20 @@ namespace SystemMaintenance
             if (btn != null) LoadCategory(btn.Tag.ToString());
         }
 
+        private Panel GetOrAddCard(ScriptInfo s) {
+            if (!scriptCardCache.ContainsKey(s.FileName)) {
+                scriptCardCache[s.FileName] = CreateScriptCard(s);
+            }
+            return scriptCardCache[s.FileName];
+        }
+
         private void LoadCategory(string category)
         {
             currentCategory = category;
 
-            // Dispose old controls properly
-            foreach(Control c in scriptsPanel.Controls) c.Dispose();
+            scriptsPanel.SuspendLayout();
+            // Just remove controls from view, do not dispose cached cards!
             scriptsPanel.Controls.Clear();
-            allScriptCards.Clear();
 
             // Update Sidebar UI
             foreach(var b in sidebarButtons) {
@@ -259,74 +286,88 @@ namespace SystemMaintenance
                 List<ScriptInfo> scripts = new List<ScriptInfo>();
                 if (categories.ContainsKey(category)) scripts = categories[category];
 
-                scriptsPanel.SuspendLayout();
                 foreach(var s in scripts) {
-                    Panel card = CreateScriptCard(s);
-                    scriptsPanel.Controls.Add(card);
-                    allScriptCards.Add(card);
+                    scriptsPanel.Controls.Add(GetOrAddCard(s));
                 }
-                scriptsPanel.ResumeLayout();
             }
 
             ChkBatchMode_CheckedChanged(null, null); // Re-apply batch visibility
+            scriptsPanel.ResumeLayout();
         }
 
         private void RenderDashboard()
         {
-            Panel pnlDash = new Panel { Width = scriptsPanel.Width - 40, AutoSize = true };
+            if (dashboardPanel == null) {
+                dashboardPanel = new Panel { Width = Math.Max(100, scriptsPanel.Width - 40), AutoSize = true };
 
-            Label lblHeader = new Label { Text = "System Overview", Font = new Font("Segoe UI", 16F, FontStyle.Bold), AutoSize = true, Location = new Point(10, 10), ForeColor = isDarkMode ? colTextDark : colTextLight };
-            pnlDash.Controls.Add(lblHeader);
+                Label lblHeader = new Label { Text = "System Overview", Font = new Font("Segoe UI", 16F, FontStyle.Bold), AutoSize = true, Location = new Point(10, 10), ForeColor = isDarkMode ? colTextDark : colTextLight, Tag = "THEMEABLE" };
+                dashboardPanel.Controls.Add(lblHeader);
 
-            Label lblInfo = new Label { Text = GetDetailedSystemInfo(), Font = new Font("Consolas", 10F), AutoSize = true, Location = new Point(10, 50), ForeColor = isDarkMode ? Color.LightGray : Color.DarkSlateGray };
-            pnlDash.Controls.Add(lblInfo);
+                Label lblInfo = new Label { Text = GetDetailedSystemInfo(), Font = new Font("Consolas", 10F), AutoSize = true, Location = new Point(10, 50), ForeColor = isDarkMode ? Color.LightGray : Color.DarkSlateGray, Tag = "THEMEABLE_INFO" };
+                dashboardPanel.Controls.Add(lblInfo);
 
-            Label lblQuick = new Label { Text = "Quick Actions", Font = new Font("Segoe UI", 14F, FontStyle.Bold), AutoSize = true, Location = new Point(10, lblInfo.Bottom + 20), ForeColor = isDarkMode ? colTextDark : colTextLight };
-            pnlDash.Controls.Add(lblQuick);
+                Label lblQuick = new Label { Text = "Quick Actions", Font = new Font("Segoe UI", 14F, FontStyle.Bold), AutoSize = true, Location = new Point(10, lblInfo.Bottom + 20), ForeColor = isDarkMode ? colTextDark : colTextLight, Tag = "THEMEABLE" };
+                dashboardPanel.Controls.Add(lblQuick);
 
-            FlowLayoutPanel quickFlow = new FlowLayoutPanel { Location = new Point(10, lblQuick.Bottom + 10), Width = pnlDash.Width, Height = 200, AutoScroll = false };
+                FlowLayoutPanel quickFlow = new FlowLayoutPanel { Location = new Point(10, lblQuick.Bottom + 10), Width = dashboardPanel.Width, Height = 200, AutoScroll = false, Tag = "QUICK_FLOW" };
 
-            string[] quickScripts = { "2_InstallCleaningTools.ps1", "9_DiskHealthCheck.ps1", "1_CreateRestorePoint.ps1", "6_OptimizeAndUpdate.ps1" };
-            foreach(var s in quickScripts) {
-                // Find script
-                ScriptInfo info = null;
-                foreach(var list in categories.Values) {
-                     info = list.FirstOrDefault(x => x.FileName == s);
-                     if (info != null) break;
+                string[] quickScripts = { "2_InstallCleaningTools.ps1", "9_DiskHealthCheck.ps1", "1_CreateRestorePoint.ps1", "6_OptimizeAndUpdate.ps1" };
+                foreach(var s in quickScripts) {
+                    // Find script
+                    ScriptInfo info = null;
+                    foreach(var list in categories.Values) {
+                        info = list.FirstOrDefault(x => x.FileName == s);
+                        if (info != null) break;
+                    }
+                    if (info != null) quickFlow.Controls.Add(GetOrAddCard(info));
                 }
-                if (info != null) quickFlow.Controls.Add(CreateScriptCard(info));
+                dashboardPanel.Controls.Add(quickFlow);
             }
-            pnlDash.Controls.Add(quickFlow);
-            scriptsPanel.Controls.Add(pnlDash);
+            // Update size just in case, ensuring safe value
+            if (scriptsPanel.Width > 40) dashboardPanel.Width = scriptsPanel.Width - 40;
+
+            // Ensure Quick Actions have current parent width
+            foreach(Control c in dashboardPanel.Controls) {
+                if (c is FlowLayoutPanel && c.Tag != null && c.Tag.ToString() == "QUICK_FLOW") {
+                    c.Width = dashboardPanel.Width;
+                }
+            }
+
+            scriptsPanel.Controls.Add(dashboardPanel);
         }
 
         private void RenderHelp()
         {
-            string helpPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "HELP.md");
-            if (!File.Exists(helpPath)) helpPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "HELP.md");
-            if (!File.Exists(helpPath)) helpPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "MaintenanceToolkit", "HELP.md");
+            if (helpPanel == null) {
+                string helpPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "HELP.md");
+                if (!File.Exists(helpPath)) helpPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "HELP.md");
+                if (!File.Exists(helpPath)) helpPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "MaintenanceToolkit", "HELP.md");
 
-            string content = File.Exists(helpPath) ? File.ReadAllText(helpPath) : "# Error\nHelp file not found.";
+                string content = File.Exists(helpPath) ? File.ReadAllText(helpPath) : "# Error\nHelp file not found.";
 
-            // Basic Markdown to HTML
-            string html = "<html><body style='font-family:Segoe UI; padding:20px; color:" + (isDarkMode ? "#EEE" : "#222") + "; background-color:" + (isDarkMode ? "#222" : "#FFF") + "'>";
-            foreach(var line in content.Split('\n')) {
-                string l = line.Trim();
-                if (l.StartsWith("# ")) html += "<h1>" + l.Substring(2) + "</h1>";
-                else if (l.StartsWith("## ")) html += "<h2>" + l.Substring(3) + "</h2>";
-                else if (l.StartsWith("### ")) html += "<h3>" + l.Substring(4) + "</h3>";
-                else if (l.StartsWith("- ")) html += "<li>" + l.Substring(2) + "</li>";
-                else if (l.Length > 0) html += "<p>" + l + "</p>";
+                // Basic Markdown to HTML
+                string html = "<html><body style='font-family:Segoe UI; padding:20px; color:" + (isDarkMode ? "#EEE" : "#222") + "; background-color:" + (isDarkMode ? "#222" : "#FFF") + "'>";
+                foreach(var line in content.Split('\n')) {
+                    string l = line.Trim();
+                    if (l.StartsWith("# ")) html += "<h1>" + l.Substring(2) + "</h1>";
+                    else if (l.StartsWith("## ")) html += "<h2>" + l.Substring(3) + "</h2>";
+                    else if (l.StartsWith("### ")) html += "<h3>" + l.Substring(4) + "</h3>";
+                    else if (l.StartsWith("- ")) html += "<li>" + l.Substring(2) + "</li>";
+                    else if (l.Length > 0) html += "<p>" + l + "</p>";
+                }
+                html += "</body></html>";
+
+                WebBrowser web = new WebBrowser { Dock = DockStyle.Fill, MinimumSize = new Size(20,20), Tag = "WEB_HELP" };
+                web.DocumentText = html;
+
+                // Wrapper Panel to set size in flow layout
+                helpPanel = new Panel { Width = Math.Max(100, scriptsPanel.Width - 40), Height = 600 };
+                helpPanel.Controls.Add(web);
             }
-            html += "</body></html>";
 
-            WebBrowser web = new WebBrowser { Dock = DockStyle.Fill, MinimumSize = new Size(20,20) };
-            web.DocumentText = html;
+            if (scriptsPanel.Width > 40) helpPanel.Width = scriptsPanel.Width - 40;
 
-            // Wrapper Panel to set size in flow layout
-            Panel p = new Panel { Width = scriptsPanel.Width - 40, Height = 600 };
-            p.Controls.Add(web);
-            scriptsPanel.Controls.Add(p);
+            scriptsPanel.Controls.Add(helpPanel);
         }
 
         private Panel CreateScriptCard(ScriptInfo script)
@@ -341,8 +382,8 @@ namespace SystemMaintenance
             card.AccessibleRole = AccessibleRole.Client;
 
             // Labels
-            Label lblTitle = new Label { Text = script.DisplayName, Font = new Font("Segoe UI", 10F, FontStyle.Bold), Location = new Point(10, 10), AutoSize = true, ForeColor = isDarkMode ? colTextDark : colTextLight };
-            Label lblDesc = new Label { Text = script.Description, Font = new Font("Segoe UI", 9F), Location = new Point(10, 35), Size = new Size(260, 60), ForeColor = isDarkMode ? Color.Gray : Color.DimGray };
+            Label lblTitle = new Label { Text = script.DisplayName, Font = new Font("Segoe UI", 10F, FontStyle.Bold), Location = new Point(10, 10), AutoSize = true, ForeColor = isDarkMode ? colTextDark : colTextLight, Tag = "THEMEABLE" };
+            Label lblDesc = new Label { Text = script.Description, Font = new Font("Segoe UI", 9F), Location = new Point(10, 35), Size = new Size(260, 60), ForeColor = isDarkMode ? Color.Gray : Color.DimGray, Tag = "THEMEABLE_DESC" };
 
             // Badges
             if (script.IsDestructive) { lblTitle.ForeColor = Color.Red; lblTitle.Text += " (!)"; }
@@ -383,7 +424,9 @@ namespace SystemMaintenance
             if (favoriteScripts.Contains(script.FileName)) favoriteScripts.Remove(script.FileName);
             else favoriteScripts.Add(script.FileName);
             SaveSettings();
-            // If in favorites view, refresh
+
+            // If currently viewing favorites, we need to refresh the view immediately
+            // But if we use cached cards, removing it from view is enough.
             if (currentCategory == "FAVORITES") LoadCategory("FAVORITES");
         }
 
@@ -449,7 +492,8 @@ namespace SystemMaintenance
         private async void BtnRunBatch_Click(object sender, EventArgs e)
         {
             var queue = new List<ScriptInfo>();
-            foreach(var card in allScriptCards) {
+            // Iterate cache to find selected
+            foreach(var card in scriptCardCache.Values) {
                 foreach(Control c in card.Controls) {
                     if (c is CheckBox && ((CheckBox)c).Checked && ((CheckBox)c).Tag.ToString() == "BATCH_CHK") {
                         queue.Add((ScriptInfo)card.Tag);
@@ -496,26 +540,21 @@ namespace SystemMaintenance
         }
 
         private void TxtSearch_TextChanged(object sender, EventArgs e) {
-            string q = txtSearch.Text.ToLower();
+            string q = txtSearch.Text.Trim().ToLower(); // Trimmed
             if (string.IsNullOrWhiteSpace(q)) {
                  if (currentCategory == "SEARCH") LoadCategory("DASHBOARD");
                  else LoadCategory(currentCategory);
                  return;
             }
 
-            // Dispose old controls
-            foreach(Control c in scriptsPanel.Controls) c.Dispose();
+            scriptsPanel.SuspendLayout();
             scriptsPanel.Controls.Clear();
-            allScriptCards.Clear();
 
             HashSet<string> seen = new HashSet<string>();
-            scriptsPanel.SuspendLayout();
             foreach(var cat in categories.Values) {
                 foreach(var s in cat) {
                     if ((s.DisplayName.ToLower().Contains(q) || s.Description.ToLower().Contains(q)) && seen.Add(s.FileName)) {
-                        Panel card = CreateScriptCard(s);
-                        scriptsPanel.Controls.Add(card);
-                        allScriptCards.Add(card);
+                        scriptsPanel.Controls.Add(GetOrAddCard(s));
                     }
                 }
             }
@@ -531,7 +570,8 @@ namespace SystemMaintenance
             btnSelectAll.Visible = isBatchMode;
             btnSelectNone.Visible = isBatchMode;
 
-            foreach(var card in allScriptCards) {
+            // Update all cached cards
+            foreach(var card in scriptCardCache.Values) {
                 foreach(Control c in card.Controls) {
                     if (c is CheckBox && c.Tag != null && c.Tag.ToString() == "BATCH_CHK") c.Visible = isBatchMode;
                 }
@@ -539,7 +579,8 @@ namespace SystemMaintenance
         }
 
         private void SetAllBatchSelection(bool val) {
-             foreach(var card in allScriptCards) {
+             // Update all cached cards
+             foreach(var card in scriptCardCache.Values) {
                 foreach(Control c in card.Controls) {
                     if (c is CheckBox && c.Tag != null && c.Tag.ToString() == "BATCH_CHK") ((CheckBox)c).Checked = val;
                 }
@@ -549,8 +590,16 @@ namespace SystemMaintenance
         private void ToggleTheme() {
             isDarkMode = !isDarkMode;
             SaveSettings();
+
+            // Dispose old full-width panels to avoid memory leaks if we recreate them
+            if (dashboardPanel != null) { dashboardPanel.Dispose(); dashboardPanel = null; }
+            if (helpPanel != null) { helpPanel.Dispose(); helpPanel = null; }
+
             ApplyTheme();
-            LoadCategory(currentCategory); // Refresh cards
+
+            if (currentCategory == "DASHBOARD") RenderDashboard();
+            else if (currentCategory == "HELP") RenderHelp();
+            else LoadCategory(currentCategory);
         }
 
         private void ApplyTheme() {
@@ -578,6 +627,15 @@ namespace SystemMaintenance
             statusStrip.ForeColor = isDarkMode ? Color.White : Color.Black;
 
             chkBatchMode.ForeColor = isBatchMode ? Color.White : fg;
+
+            // Update Cached Cards
+            foreach(var card in scriptCardCache.Values) {
+                card.BackColor = isDarkMode ? colCardDark : colCardLight;
+                foreach(Control c in card.Controls) {
+                    if (c.Tag != null && c.Tag.ToString() == "THEMEABLE") c.ForeColor = isDarkMode ? colTextDark : colTextLight;
+                    if (c.Tag != null && c.Tag.ToString() == "THEMEABLE_DESC") c.ForeColor = isDarkMode ? Color.Gray : Color.DimGray;
+                }
+            }
         }
 
         private void LoadSettings()
