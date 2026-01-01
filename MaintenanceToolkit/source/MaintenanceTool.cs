@@ -210,7 +210,7 @@ namespace SystemMaintenance
         {
             try
             {
-                File.WriteAllText(SETTINGS_FILE, $"DarkMode={isDarkMode}");
+                File.WriteAllText(SETTINGS_FILE, "DarkMode=" + isDarkMode);
                 File.WriteAllLines(FAVORITES_FILE, favoriteScripts);
             }
             catch { /* Ignore */ }
@@ -276,11 +276,11 @@ namespace SystemMaintenance
                 if (drive.IsReady) {
                     long free = drive.AvailableFreeSpace;
                     long total = drive.TotalSize;
-                    freeSpace = $"C: {Math.Round(free / (1024.0 * 1024.0 * 1024.0), 1)} GB Free / {Math.Round(total / (1024.0 * 1024.0 * 1024.0), 1)} GB";
+                    freeSpace = string.Format("C: {0} GB Free / {1} GB", Math.Round(free / (1024.0 * 1024.0 * 1024.0), 1), Math.Round(total / (1024.0 * 1024.0 * 1024.0), 1));
                 }
             } catch { }
 
-            return $"{osName}\n{cpuName} | {totalRam} RAM\n{freeSpace}";
+            return string.Format("{0}\n{1} | {2} RAM\n{3}", osName, cpuName, totalRam, freeSpace);
         }
 
         private void BuildTabs()
@@ -490,7 +490,7 @@ namespace SystemMaintenance
 
                 if (script.IsDestructive)
                 {
-                    var result = MessageBox.Show($"Warning: {script.DisplayName} will permanently modify or delete data.\n\nAre you sure you want to proceed?", "Safety Check", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+                    var result = MessageBox.Show("Warning: " + script.DisplayName + " will permanently modify or delete data.\n\nAre you sure you want to proceed?", "Safety Check", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
                     if (result == DialogResult.No) return;
                 }
                 RunScript(script);
@@ -521,7 +521,7 @@ namespace SystemMaintenance
             try {
                 using (SaveFileDialog sfd = new SaveFileDialog()) {
                     sfd.Filter = "Text Files (*.txt)|*.txt";
-                    sfd.FileName = $"MaintenanceLog_{DateTime.Now:yyyyMMdd_HHmm}.txt";
+                    sfd.FileName = string.Format("MaintenanceLog_{0:yyyyMMdd_HHmm}.txt", DateTime.Now);
                     if (sfd.ShowDialog() == DialogResult.OK) {
                         File.WriteAllText(sfd.FileName, txtLog.Text);
                         MessageBox.Show("Log saved successfully.", "Saved", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -568,7 +568,7 @@ namespace SystemMaintenance
                     if (c is CheckBox chk && chk.Checked) count++;
                 }
             }
-            btnRunBatch.Text = $"RUN SELECTED ({count})";
+            btnRunBatch.Text = "RUN SELECTED (" + count + ")";
         }
 
         private async void BtnRunBatch_Click(object sender, EventArgs e)
@@ -592,7 +592,7 @@ namespace SystemMaintenance
 
             if (scriptsToRun.Count == 0) return;
 
-            if (MessageBox.Show($"Run {scriptsToRun.Count} scripts sequentially?", "Confirm Batch", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.No)
+            if (MessageBox.Show("Run " + scriptsToRun.Count + " scripts sequentially?", "Confirm Batch", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.No)
                 return;
 
             batchCts = new CancellationTokenSource();
@@ -614,7 +614,7 @@ namespace SystemMaintenance
                 {
                     if (batchCts.Token.IsCancellationRequested) break;
 
-                    statusLabel.Text = $"Running {processed + 1} of {scriptsToRun.Count}: {script.DisplayName}";
+                    statusLabel.Text = string.Format("Running {0} of {1}: {2}", processed + 1, scriptsToRun.Count, script.DisplayName);
                     await RunScriptAsync(script, batchCts.Token);
                     processed++;
                     progressBar.Value = processed;
@@ -711,7 +711,7 @@ namespace SystemMaintenance
                     }
                     catch (Exception ex)
                     {
-                        Log($"Error cancelling process: {ex.Message}");
+                        Log("Error cancelling process: " + ex.Message);
                     }
                 }
             }
@@ -725,9 +725,9 @@ namespace SystemMaintenance
                 if (token.IsCancellationRequested) return;
 
                 this.Invoke(new Action(() => {
-                     Log($"Starting: {script.DisplayName}...");
+                     Log("Starting: " + script.DisplayName + "...");
                      if (!progressBar.Visible) {
-                        statusLabel.Text = $"Running: {script.DisplayName}";
+                        statusLabel.Text = "Running: " + script.DisplayName;
                         progressBar.Visible = true;
                      }
                 }));
@@ -735,7 +735,7 @@ namespace SystemMaintenance
                 ExecuteScriptInternal(script);
 
                 this.Invoke(new Action(() => {
-                     Log($"Completed: {script.DisplayName}");
+                     Log("Completed: " + script.DisplayName);
                      if (!isBatchMode) statusLabel.Text = "Ready";
                 }));
             });
@@ -749,15 +749,15 @@ namespace SystemMaintenance
                 return;
             }
 
-            Log($"Starting: {script.DisplayName}...");
-            statusLabel.Text = $"Running: {script.DisplayName}";
+            Log("Starting: " + script.DisplayName + "...");
+            statusLabel.Text = "Running: " + script.DisplayName;
             progressBar.Visible = true;
             btnCancel.Visible = !script.IsInteractive;
 
             System.Threading.Tasks.Task.Run(() => {
                 ExecuteScriptInternal(script);
                 this.Invoke(new Action(() => {
-                    Log($"Finished: {script.DisplayName}");
+                    Log("Finished: " + script.DisplayName);
                     Log("------------------------------------------------");
                     statusLabel.Text = "Ready";
                     progressBar.Visible = false;
@@ -777,7 +777,7 @@ namespace SystemMaintenance
             if (!File.Exists(scriptPath))
             {
                 this.Invoke(new Action(() => {
-                    Log($"Error: Script file not found: {script.FileName}");
+                    Log("Error: Script file not found: " + script.FileName);
                 }));
                 return;
             }
@@ -793,17 +793,17 @@ namespace SystemMaintenance
 
                 if (script.IsInteractive)
                 {
-                    psi.Arguments = $"-NoProfile -ExecutionPolicy Bypass -NoExit -File \"{scriptPath}\"";
+                    psi.Arguments = string.Format("-NoProfile -ExecutionPolicy Bypass -NoExit -File \"{0}\"", scriptPath);
                     psi.UseShellExecute = true;
 
                     Process.Start(psi);
                     this.Invoke(new Action(() => {
-                        Log($"Launched {script.DisplayName} in external window.");
+                        Log("Launched " + script.DisplayName + " in external window.");
                     }));
                 }
                 else
                 {
-                    psi.Arguments = $"-NoProfile -ExecutionPolicy Bypass -NonInteractive -File \"{scriptPath}\"";
+                    psi.Arguments = string.Format("-NoProfile -ExecutionPolicy Bypass -NonInteractive -File \"{0}\"", scriptPath);
                     psi.RedirectStandardOutput = true;
                     psi.RedirectStandardError = true;
                     psi.UseShellExecute = false;
@@ -827,14 +827,14 @@ namespace SystemMaintenance
             catch (Exception ex)
             {
                 this.Invoke(new Action(() => {
-                    Log($"Error executing script: {ex.Message}");
+                    Log("Error executing script: " + ex.Message);
                 }));
             }
         }
 
         private void Log(string msg)
         {
-            string line = $"[{DateTime.Now.ToShortTimeString()}] {msg}";
+            string line = "[" + DateTime.Now.ToShortTimeString() + "] " + msg;
 
             if (txtLog.InvokeRequired) { txtLog.Invoke(new Action<string>(Log), msg); return; }
 
@@ -846,7 +846,7 @@ namespace SystemMaintenance
             try {
                 string logDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs");
                 if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
-                File.AppendAllText(Path.Combine(logDir, $"log_{DateTime.Now:yyyyMMdd}.txt"), line + Environment.NewLine);
+                File.AppendAllText(Path.Combine(logDir, string.Format("log_{0:yyyyMMdd}.txt", DateTime.Now)), line + Environment.NewLine);
             } catch { }
         }
 
