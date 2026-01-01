@@ -112,7 +112,11 @@ namespace SystemMaintenance
             // Cleanup temporary script directory
             if (tempScriptDir != null && Directory.Exists(tempScriptDir))
             {
-                try { Directory.Delete(tempScriptDir, true); } catch { }
+                try {
+                    Directory.Delete(tempScriptDir, true);
+                } catch (Exception ex) {
+                    Debug.WriteLine("Failed to cleanup temp dir: " + ex.Message);
+                }
             }
         }
 
@@ -572,14 +576,19 @@ namespace SystemMaintenance
             btnCancel.Visible = !script.IsInteractive;
 
             Task.Run(() => {
-                ExecuteScriptInternal(script);
-                Invoke((Action)(() => {
-                    Log("Finished: " + script.DisplayName);
-                    statusLabel.Text = "Ready";
-                    progressBar.Visible = false;
-                    btnCancel.Visible = false;
+                try {
+                    ExecuteScriptInternal(script);
+                } finally {
+                    if (!IsDisposed && IsHandleCreated) {
+                        BeginInvoke((Action)(() => {
+                            Log("Finished: " + script.DisplayName);
+                            statusLabel.Text = "Ready";
+                            progressBar.Visible = false;
+                            btnCancel.Visible = false;
+                        }));
+                    }
                     Interlocked.Exchange(ref scriptRunning, 0);
-                }));
+                }
             });
         }
 
@@ -607,9 +616,15 @@ namespace SystemMaintenance
                         if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
 
                         using (Stream stream = assembly.GetManifestResourceStream(resourceName))
-                        using (FileStream fileStream = new FileStream(fullPath, FileMode.Create))
                         {
-                            stream.CopyTo(fileStream);
+                            if (stream == null) {
+                                Invoke((Action)(() => Log("Error: Missing resource stream for " + resourceName)));
+                                continue;
+                            }
+                            using (FileStream fileStream = new FileStream(fullPath, FileMode.Create))
+                            {
+                                stream.CopyTo(fileStream);
+                            }
                         }
                     }
                 }
@@ -738,6 +753,7 @@ namespace SystemMaintenance
                         currentProcess.Kill();
                         Log("Process cancelled by user.");
                         currentProcess = null;
+                        Interlocked.Exchange(ref scriptRunning, 0);
                     } catch (Exception ex) {
                         Log("Error cancelling process: " + ex.Message);
                     }
