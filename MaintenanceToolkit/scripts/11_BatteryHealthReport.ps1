@@ -9,6 +9,7 @@ try {
 
     if (Test-Path $path) {
         Write-Log "Report generated at $path" "Green"
+        # Open with default browser
         Start-Process "$path"
     } else {
         Write-Log "Failed to generate report." "Red"

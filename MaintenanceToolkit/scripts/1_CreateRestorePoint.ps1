@@ -14,7 +14,12 @@ try {
     $desc = "MaintenanceToolkit_$(Get-Date -Format 'yyyyMMdd-HHmm')"
 
     # Use Checkpoint-Computer
-    # Note: This often fails if run too frequently (24h limit)
+    # Note: This often fails if run too frequently (24h limit). We can override this via registry hack or just warn.
+    # Registry Hack to allow unlimited restore points: HKLM\Software\Microsoft\Windows NT\CurrentVersion\SystemRestore -> SystemRestorePointCreationFrequency = 0
+
+    # Optional: Set frequency to 0 to force creation
+    Set-RegKey -Path "HKLM:\Software\Microsoft\Windows NT\CurrentVersion\SystemRestore" -Name "SystemRestorePointCreationFrequency" -Value 0 -Type DWord -Force
+
     Checkpoint-Computer -Description $desc -RestorePointType "MODIFY_SETTINGS" -ErrorAction Stop
 
     Write-Log "Success: Restore Point '$desc' created." "Green"

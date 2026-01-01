@@ -122,7 +122,7 @@ namespace SystemMaintenance
             sidebarPanel.Controls.Add(sidebarHeader);
 
             // Categories
-            string[] cats = { "DASHBOARD", "FAVORITES", "CLEAN", "REPAIR", "HARDWARE", "NETWORK", "SECURITY", "UTILS" };
+            string[] cats = { "DASHBOARD", "FAVORITES", "CLEAN", "REPAIR", "HARDWARE", "NETWORK", "SECURITY", "UTILS", "HELP" };
             foreach (var cat in cats)
             {
                 Button btn = CreateSidebarButton(cat);
@@ -135,30 +135,15 @@ namespace SystemMaintenance
             // We want Header first.
             sidebarHeader.BringToFront();
 
-            // Sidebar Footer (Help/Theme)
-            Panel sidebarFooter = new Panel { Dock = DockStyle.Bottom, Height = 100 };
-            Button btnHelp = CreateSidebarButton("HELP / ABOUT");
-            btnHelp.Dock = DockStyle.Top;
-            btnHelp.Click -= SidebarButton_Click; // Remove default handler
-            btnHelp.Click += (s,e) => ShowHelp();
+            // Sidebar Footer (Theme) - Help moved to category
+            Panel sidebarFooter = new Panel { Dock = DockStyle.Bottom, Height = 50 };
 
             btnDarkMode = CreateSidebarButton("TOGGLE THEME");
-            btnDarkMode.Dock = DockStyle.Top;
+            btnDarkMode.Dock = DockStyle.Bottom;
             btnDarkMode.Click -= SidebarButton_Click;
             btnDarkMode.Click += (s,e) => ToggleTheme();
 
-            sidebarFooter.Controls.Add(btnHelp); // Bottom most due to Dock.Top stacking? No.
-            // Dock Top means:
-            // 1. Add btnHelp -> Tops
-            // 2. Add btnDarkMode -> Below btnHelp
-            // We want help at bottom.
-
-            // Let's just reset footer controls with specific dock
-            btnHelp.Dock = DockStyle.Bottom;
-            btnDarkMode.Dock = DockStyle.Bottom;
-            sidebarFooter.Controls.Add(btnDarkMode); // Above help
-            sidebarFooter.Controls.Add(btnHelp);     // Very bottom
-
+            sidebarFooter.Controls.Add(btnDarkMode);
             sidebarPanel.Controls.Add(sidebarFooter);
 
             // --- Content Area Construction ---
@@ -310,6 +295,9 @@ namespace SystemMaintenance
             if (category == "DASHBOARD") {
                 RenderDashboard();
             }
+            else if (category == "HELP") {
+                RenderHelp();
+            }
             // Add cached buttons to panel
             else if (buttonCache.ContainsKey(category))
             {
@@ -335,10 +323,8 @@ namespace SystemMaintenance
             Label lblQuick = new Label { Text = "Quick Actions", Font = new Font("Segoe UI", 14F, FontStyle.Bold), Dock = DockStyle.Top, Height = 40, ForeColor = isDarkMode ? Color.White : Color.Black };
 
             FlowLayoutPanel quickPanel = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 150, AutoScroll = false };
-            // Add top 3 scripts
             string[] quickScripts = { "2_InstallCleaningTools.ps1", "9_DiskHealthCheck.ps1", "1_CreateRestorePoint.ps1" };
             foreach(var s in quickScripts) {
-                // Find script info - inefficient but works
                 foreach(var cat in categories.Values) {
                     var script = cat.FirstOrDefault(x => x.FileName == s);
                     if(script != null) {
@@ -356,17 +342,37 @@ namespace SystemMaintenance
             scriptsPanel.Controls.Add(dash);
         }
 
+        private void RenderHelp() {
+            string helpPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "HELP.md");
+            string helpText = File.Exists(helpPath) ? File.ReadAllText(helpPath) : "Help file not found.";
+
+            TextBox txt = new TextBox {
+                Multiline = true,
+                Dock = DockStyle.Fill,
+                ReadOnly = true,
+                ScrollBars = ScrollBars.Vertical,
+                Font = new Font("Segoe UI", 10),
+                Text = helpText,
+                BackColor = isDarkMode ? Color.FromArgb(30,30,30) : Color.White,
+                ForeColor = isDarkMode ? Color.White : Color.Black,
+                BorderStyle = BorderStyle.None
+            };
+            scriptsPanel.Controls.Add(txt);
+        }
+
         private void InitializeData()
         {
             string[] cats = { "CLEAN", "REPAIR", "HARDWARE", "NETWORK", "SECURITY", "UTILS" };
             categories["FAVORITES"] = new List<ScriptInfo>();
-            categories["DASHBOARD"] = new List<ScriptInfo>(); // Dashboard is special, but needs a key
+            categories["DASHBOARD"] = new List<ScriptInfo>();
+            categories["HELP"] = new List<ScriptInfo>(); // Empty placeholder
             foreach (var c in cats) categories[c] = new List<ScriptInfo>();
 
             // Initialize Cache
             foreach (var c in cats) buttonCache[c] = new List<Button>();
             buttonCache["FAVORITES"] = new List<Button>();
             buttonCache["DASHBOARD"] = new List<Button>();
+            buttonCache["HELP"] = new List<Button>();
 
             // --- DEFINITIONS (Same as before) ---
             // CLEAN
