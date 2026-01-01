@@ -993,18 +993,21 @@ namespace SystemMaintenance
         private string GetDetailedSystemInfo()
         {
             StringBuilder sb = new StringBuilder();
-            sb.AppendLine("OS: " + GetOSFriendlyName());
-            sb.AppendLine("Machine: " + Environment.MachineName);
-            sb.AppendLine("User: " + Environment.UserName);
-            sb.AppendLine("Uptime: " + GetUptime());
+            sb.AppendLine("   OS:       " + GetOSFriendlyName());
+            sb.AppendLine("   Machine:  " + Environment.MachineName);
+            sb.AppendLine("   User:     " + Environment.UserName);
+            sb.AppendLine("   Uptime:   " + GetUptime());
 
             try {
                 using (var searcher = new ManagementObjectSearcher("SELECT Name, NumberOfCores, NumberOfLogicalProcessors FROM Win32_Processor"))
                 {
                     foreach (var item in searcher.Get())
                     {
-                        sb.AppendLine("CPU: " + item["Name"].ToString());
-                        sb.AppendLine(string.Format("Cores: {0} | Threads: {1}", item["NumberOfCores"], item["NumberOfLogicalProcessors"]));
+                        string cpu = item["Name"].ToString();
+                        // Truncate CPU name if too long for cleaner display
+                        if (cpu.Length > 40) cpu = cpu.Substring(0, 37) + "...";
+                        sb.AppendLine("   CPU:      " + cpu);
+                        sb.AppendLine(string.Format("   Cores:    {0} | Threads: {1}", item["NumberOfCores"], item["NumberOfLogicalProcessors"]));
                     }
                 }
 
@@ -1013,7 +1016,7 @@ namespace SystemMaintenance
                     {
                         foreach (var item in searcher.Get())
                         {
-                            sb.AppendLine("GPU: " + item["Name"].ToString());
+                            sb.AppendLine("   GPU:      " + item["Name"].ToString());
                         }
                     }
                 } catch {}
@@ -1025,7 +1028,7 @@ namespace SystemMaintenance
                         long totalRam = Convert.ToInt64(item["TotalVisibleMemorySize"]) / 1024;
                         long freeRam = Convert.ToInt64(item["FreePhysicalMemory"]) / 1024;
                         double percentFree = (double)freeRam / totalRam * 100;
-                        sb.AppendLine(string.Format("RAM: {0} MB Free / {1} MB Total ({2:F1}% Free)", freeRam, totalRam, percentFree));
+                        sb.AppendLine(string.Format("   RAM:      {0} MB Free / {1} MB Total ({2:F1}% Free)", freeRam, totalRam, percentFree));
                     }
                 }
 
@@ -1034,15 +1037,15 @@ namespace SystemMaintenance
                 try { using (var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending")) { if (key != null) reboot = true; } } catch {}
                 try { using (var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired")) { if (key != null) reboot = true; } } catch {}
 
-                if (reboot) sb.AppendLine("STATUS: Pending Reboot (!)");
+                if (reboot) sb.AppendLine("   STATUS:   Pending Reboot (!)");
 
-                sb.AppendLine("--------------------------------------------------");
+                sb.AppendLine("   --------------------------------------------------");
                 foreach (var drive in DriveInfo.GetDrives()) {
                     if (drive.IsReady && drive.DriveType == DriveType.Fixed) {
                         long freeGb = drive.TotalFreeSpace / 1073741824;
                         long totalGb = drive.TotalSize / 1073741824;
                         double percentFree = (double)drive.TotalFreeSpace / drive.TotalSize * 100;
-                        sb.AppendLine(string.Format("Disk ({0}): {1} GB Free / {2} GB Total ({3:F1}% Free)", drive.Name, freeGb, totalGb, percentFree));
+                        sb.AppendLine(string.Format("   Disk ({0}): {1} GB Free / {2} GB Total ({3:F1}% Free)", drive.Name, freeGb, totalGb, percentFree));
                     }
                 }
             } catch (Exception ex) {
