@@ -140,11 +140,22 @@ namespace SystemMaintenance
             sidebarHeader.Controls.Add(lblTitle);
             sidebarPanel.Controls.Add(sidebarHeader);
 
-            // Categories
-            string[] cats = { "DASHBOARD", "FAVORITES", "CLEAN", "REPAIR", "HARDWARE", "NETWORK", "SECURITY", "UTILS", "HELP" };
-            foreach (var cat in cats)
+            // Categories with Icons
+            var cats = new Dictionary<string, string> {
+                {"DASHBOARD", "🏠 Dashboard"},
+                {"FAVORITES", "★ Favorites"},
+                {"CLEAN", "🧹 Clean"},
+                {"REPAIR", "🔧 Repair"},
+                {"HARDWARE", "💻 Hardware"},
+                {"NETWORK", "🌐 Network"},
+                {"SECURITY", "🛡 Security"},
+                {"UTILS", "🧰 Utils"},
+                {"HELP", "❓ Help"}
+            };
+
+            foreach (var kvp in cats)
             {
-                Button btn = CreateSidebarButton(cat);
+                Button btn = CreateSidebarButton(kvp.Key, kvp.Value);
                 sidebarPanel.Controls.Add(btn);
                 sidebarButtons.Add(btn);
             }
@@ -250,7 +261,7 @@ namespace SystemMaintenance
         }
 
         // --- Layout Helpers ---
-        private Button CreateSidebarButton(string text)
+        private Button CreateSidebarButton(string tag, string text)
         {
             Button btn = new Button();
             btn.Text = text;
@@ -261,7 +272,7 @@ namespace SystemMaintenance
             btn.TextAlign = ContentAlignment.MiddleLeft;
             btn.Padding = new Padding(15, 0, 0, 0);
             btn.Font = new Font("Segoe UI", 10F, FontStyle.Regular);
-            btn.Tag = text;
+            btn.Tag = tag;
             btn.Cursor = Cursors.Hand;
             btn.AccessibleName = text;
             btn.AccessibleRole = AccessibleRole.PushButton;
@@ -295,8 +306,15 @@ namespace SystemMaintenance
             // Update Sidebar UI
             foreach(var b in sidebarButtons) {
                 bool isActive = (string)b.Tag == category;
-                b.BackColor = isActive ? (isDarkMode ? Color.FromArgb(60,60,60) : Color.LightGray) : Color.Transparent;
-                b.Font = new Font("Segoe UI", 10F, isActive ? FontStyle.Bold : FontStyle.Regular);
+                if (isActive) {
+                    b.BackColor = isDarkMode ? Color.FromArgb(60,60,60) : Color.LightGray;
+                    b.ForeColor = colAccent; // Highlight text
+                    b.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
+                } else {
+                    b.BackColor = Color.Transparent;
+                    b.ForeColor = isDarkMode ? Color.White : Color.Black;
+                    b.Font = new Font("Segoe UI", 10F, FontStyle.Regular);
+                }
             }
 
             if (category == "DASHBOARD") RenderDashboard();
@@ -320,16 +338,31 @@ namespace SystemMaintenance
             if (dashboardPanel == null) {
                 dashboardPanel = new Panel { Width = Math.Max(100, scriptsPanel.Width - 40), AutoSize = true };
 
-                Label lblHeader = new Label { Text = "System Overview", Font = new Font("Segoe UI", 16F, FontStyle.Bold), AutoSize = true, Location = new Point(10, 10), ForeColor = isDarkMode ? colTextDark : colTextLight, Tag = "THEMEABLE" };
+                Label lblHeader = new Label { Text = "System Overview", Font = new Font("Segoe UI", 16F, FontStyle.Bold), AutoSize = true, Location = new Point(0, 0), ForeColor = isDarkMode ? colTextDark : colTextLight, Tag = "THEMEABLE" };
                 dashboardPanel.Controls.Add(lblHeader);
 
-                Label lblInfo = new Label { Text = GetDetailedSystemInfo(), Font = new Font("Consolas", 10F), AutoSize = true, Location = new Point(10, 50), ForeColor = isDarkMode ? Color.LightGray : Color.DarkSlateGray, Tag = "THEMEABLE_INFO" };
-                dashboardPanel.Controls.Add(lblInfo);
+                // System Info Card
+                Panel infoCard = new Panel {
+                    Location = new Point(0, 40),
+                    Size = new Size(dashboardPanel.Width, 150),
+                    BackColor = isDarkMode ? colCardDark : colCardLight,
+                    Tag = "THEMEABLE_CARD"
+                };
+                Label lblInfo = new Label {
+                    Text = GetDetailedSystemInfo(),
+                    Font = new Font("Consolas", 10F),
+                    AutoSize = true,
+                    Location = new Point(10, 10),
+                    ForeColor = isDarkMode ? colTextDark : colTextLight, // Better contrast in card
+                    Tag = "THEMEABLE"
+                };
+                infoCard.Controls.Add(lblInfo);
+                dashboardPanel.Controls.Add(infoCard);
 
-                Label lblQuick = new Label { Text = "Quick Actions", Font = new Font("Segoe UI", 14F, FontStyle.Bold), AutoSize = true, Location = new Point(10, lblInfo.Bottom + 20), ForeColor = isDarkMode ? colTextDark : colTextLight, Tag = "THEMEABLE" };
+                Label lblQuick = new Label { Text = "Quick Actions", Font = new Font("Segoe UI", 14F, FontStyle.Bold), AutoSize = true, Location = new Point(0, infoCard.Bottom + 20), ForeColor = isDarkMode ? colTextDark : colTextLight, Tag = "THEMEABLE" };
                 dashboardPanel.Controls.Add(lblQuick);
 
-                FlowLayoutPanel quickFlow = new FlowLayoutPanel { Location = new Point(10, lblQuick.Bottom + 10), Width = dashboardPanel.Width, Height = 200, AutoScroll = false, Tag = "QUICK_FLOW" };
+                FlowLayoutPanel quickFlow = new FlowLayoutPanel { Location = new Point(0, lblQuick.Bottom + 10), Width = dashboardPanel.Width, Height = 200, AutoScroll = false, Tag = "QUICK_FLOW" };
 
                 string[] quickScripts = { "2_InstallCleaningTools.ps1", "9_DiskHealthCheck.ps1", "1_CreateRestorePoint.ps1", "6_OptimizeAndUpdate.ps1" };
                 foreach(var s in quickScripts) {
@@ -646,12 +679,17 @@ namespace SystemMaintenance
             btnCancel.Visible = true;
 
             try {
+                progressBar.Style = ProgressBarStyle.Continuous;
+                progressBar.Maximum = queue.Count;
+                progressBar.Value = 0;
+
                 int i=0;
                 foreach(var s in queue) {
                      if (batchCts.IsCancellationRequested) break;
                      statusLabel.Text = string.Format("Batch: ({0}/{1}) {2}", i+1, queue.Count, s.DisplayName);
                      await Task.Run(() => ExecuteScriptInternal(s));
                      i++;
+                     progressBar.Value = i;
                 }
                 Log("Batch Execution Completed.");
             } finally {
@@ -659,6 +697,7 @@ namespace SystemMaintenance
                 progressBar.Visible = false;
                 btnCancel.Visible = false;
                 statusLabel.Text = "Ready";
+                progressBar.Style = ProgressBarStyle.Marquee; // Reset for single runs
             }
         }
 
