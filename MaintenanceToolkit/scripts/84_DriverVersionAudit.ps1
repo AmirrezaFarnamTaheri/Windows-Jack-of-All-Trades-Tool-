@@ -9,7 +9,7 @@ try {
     $drivers = Get-WindowsDriver -Online -All | Where-Object { $_.ProviderName -ne "Microsoft" -and $_.ProviderName -ne "Microsoft Corporation" }
 
     if ($drivers) {
-        New-Report "Third-Party Driver Audit"
+        $report = New-Report "Third-Party Driver Audit"
 
         $driverData = @()
         foreach ($d in $drivers) {
@@ -26,10 +26,10 @@ try {
         # Sort by Provider then Class
         $driverData = $driverData | Sort-Object Provider, Class
 
-        Add-ReportSection "Third-Party Drivers ($($drivers.Count))" $driverData "Table"
+        $report | Add-ReportSection "Third-Party Drivers ($($drivers.Count))" $driverData "Table"
 
         $outFile = "$env:USERPROFILE\Desktop\Drivers_$(Get-Date -Format 'yyyyMMdd_HHmm').html"
-        Export-Report-Html $outFile
+        $report | Export-Report-Html $outFile
 
         Show-Success "Exported list to $outFile"
         Invoke-Item $outFile

@@ -20,11 +20,11 @@ try {
     }
 
     if ($nonMsServices.Count -gt 0) {
-        New-Report "Non-Microsoft Service Audit"
-        Add-ReportSection "Running Third-Party Services ($($nonMsServices.Count))" $nonMsServices "Table"
+        $report = New-Report "Non-Microsoft Service Audit"
+        $report | Add-ReportSection "Running Third-Party Services ($($nonMsServices.Count))" $nonMsServices "Table"
 
         $outFile = "$env:USERPROFILE\Desktop\ServiceAudit_$(Get-Date -Format 'yyyyMMdd_HHmm').html"
-        Export-Report-Html $outFile
+        $report | Export-Report-Html $outFile
 
         Show-Success "Found $($nonMsServices.Count) services. Report saved to $outFile"
         Invoke-Item $outFile

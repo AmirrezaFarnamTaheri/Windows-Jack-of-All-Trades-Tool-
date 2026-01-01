@@ -28,11 +28,11 @@ try {
 
         $sorted = $reportData | Sort-Object Process
 
-        New-Report "Active Process Connections"
-        Add-ReportSection "Established Connections ($($sorted.Count))" $sorted "Table"
+        $report = New-Report "Active Process Connections"
+        $report | Add-ReportSection "Established Connections ($($sorted.Count))" $sorted "Table"
 
         $outFile = "$env:USERPROFILE\Desktop\ProcessConnections_$(Get-Date -Format 'yyyyMMdd_HHmm').html"
-        Export-Report-Html $outFile
+        $report | Export-Report-Html $outFile
 
         Show-Success "Scan Complete. Report saved to $outFile"
         Invoke-Item $outFile

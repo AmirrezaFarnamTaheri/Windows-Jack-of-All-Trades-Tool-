@@ -31,11 +31,11 @@ try {
 
     if ($reportData.Count -gt 0) {
         $sorted = $reportData | Sort-Object Port
-        New-Report "Local Port Audit"
-        Add-ReportSection "Listening Ports ($($sorted.Count))" $sorted "Table"
+        $report = New-Report "Local Port Audit"
+        $report | Add-ReportSection "Listening Ports ($($sorted.Count))" $sorted "Table"
 
         $outFile = "$env:USERPROFILE\Desktop\PortScan_$(Get-Date -Format 'yyyyMMdd_HHmm').html"
-        Export-Report-Html $outFile
+        $report | Export-Report-Html $outFile
 
         Show-Success "Scan finished. Report saved to $outFile"
         Invoke-Item $outFile

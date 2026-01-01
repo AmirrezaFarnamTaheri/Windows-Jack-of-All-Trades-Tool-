@@ -45,11 +45,11 @@ try {
         Write-Log "Disk $($disk.DeviceId): $($disk.FriendlyName) - $status" "White"
     }
 
-    New-Report "Disk Health Report (S.M.A.R.T.)"
-    Add-ReportSection "Physical Disks" $diskReport "Table"
+    $report = New-Report "Disk Health Report (S.M.A.R.T.)"
+    $report | Add-ReportSection "Physical Disks" $diskReport "Table"
 
     $outHtml = "$env:USERPROFILE\Desktop\DiskHealth_$(Get-Date -Format 'yyyyMMdd_HHmm').html"
-    Export-Report-Html $outHtml
+    $report | Export-Report-Html $outHtml
 
     Show-Success "Full report exported to $outHtml"
     Invoke-Item $outHtml

@@ -20,10 +20,10 @@ try {
     # Filter and Sort
     $cleanApps = $apps | Where-Object { $_.DisplayName } | Sort-Object DisplayName | Select-Object DisplayName, DisplayVersion, Publisher, InstallDate
 
-    New-Report "Installed Applications Inventory"
-    Add-ReportSection "Installed Applications ($($cleanApps.Count))" $cleanApps "Table"
+    $report = New-Report "Installed Applications Inventory"
+    $report | Add-ReportSection "Installed Applications ($($cleanApps.Count))" $cleanApps "Table"
 
-    Export-Report-Html $outHtml
+    $report | Export-Report-Html $outHtml
     Show-Success "List exported to: $outHtml"
     Invoke-Item $outHtml
 

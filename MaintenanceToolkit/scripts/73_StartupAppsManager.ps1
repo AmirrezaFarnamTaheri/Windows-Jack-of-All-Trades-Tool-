@@ -10,14 +10,17 @@ try {
     # Helper to check file existence
     function Get-FileStatus ($path) {
         if ([string]::IsNullOrWhiteSpace($path)) { return "Empty" }
-        # Remove quotes for checking
-        $cleanPath = $path.Trim('"')
-        # Handle arguments (naive split)
-        if ($cleanPath.Contains(".exe")) {
-             $cleanPath = $cleanPath.Substring(0, $cleanPath.IndexOf(".exe") + 4)
+
+        $executablePath = $null
+        # Regex to find a path to an .exe, handling quotes and spaces
+        if ($path -match '(?i)(".*?\.(?:exe|bat|cmd|vbs)"|[\w\:\\\/\s-]+\.(?:exe|bat|cmd|vbs))') {
+            $executablePath = $matches[0].Trim('"')
+        } else {
+            # Fallback for paths without extensions (e.g., shortcuts)
+            $executablePath = $path.Trim('"')
         }
 
-        if (Test-Path $cleanPath) { return "<span class='status-pass'>Found</span>" }
+        if (Test-Path $executablePath -ErrorAction SilentlyContinue) { return "<span class='status-pass'>Found</span>" }
         return "<span class='status-fail'>MISSING</span>"
     }
 
@@ -56,11 +59,11 @@ try {
     }
 
     if ($startupItems.Count -gt 0) {
-        New-Report "Startup Applications Report"
-        Add-ReportSection "Startup Items" $startupItems "Table"
+        $report = New-Report "Startup Applications Report"
+        $report | Add-ReportSection "Startup Items" $startupItems "Table"
 
         $outFile = "$env:USERPROFILE\Desktop\StartupApps_$(Get-Date -Format 'yyyyMMdd_HHmm').html"
-        Export-Report-Html $outFile
+        $report | Export-Report-Html $outFile
 
         Show-Success "Found $($startupItems.Count) startup items. Report exported."
         Invoke-Item $outFile

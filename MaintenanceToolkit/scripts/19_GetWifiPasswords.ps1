@@ -18,18 +18,22 @@ try {
             }
 
             $wifiList += [PSCustomObject]@{
-                SSID = $p
+                SSID     = $p
                 Password = $pass
             }
-            Write-Log "Profile: $p | Key found." "Cyan"
+            if ($pass -ne "N/A") {
+                Write-Log "Profile: $p | Key: $pass" "Cyan"
+            } else {
+                Write-Log "Profile: $p | Open/No Key" "Gray"
+            }
         }
 
-        New-Report "Wi-Fi Password Recovery"
-        Add-ReportSection "Saved Networks" $wifiList "Table"
-        Add-ReportSection "Security Note" "This report contains sensitive cleartext passwords. Delete this file after use." "Text"
+        $report = New-Report "Wi-Fi Password Recovery"
+        $report | Add-ReportSection "Saved Networks" $wifiList "Table"
+        $report | Add-ReportSection "Security Note" "This report contains sensitive cleartext passwords. Delete this file after use." "Text"
 
         $outFile = "$env:USERPROFILE\Desktop\WifiKeys_$(Get-Date -Format 'yyyyMMdd_HHmm').html"
-        Export-Report-Html $outFile
+        $report | Export-Report-Html $outFile
 
         Show-Success "Report saved to $outFile"
         Invoke-Item $outFile

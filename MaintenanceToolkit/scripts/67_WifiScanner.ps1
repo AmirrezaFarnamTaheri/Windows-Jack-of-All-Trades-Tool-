@@ -39,13 +39,23 @@ try {
         foreach ($line in $networks) {
             $l = $line.Trim()
             if ($l.StartsWith("SSID")) {
+                # Flush any in-progress BSSID block before switching SSID
+                if ($currentBSSID.Keys.Count -gt 0) {
+                    $results += [PSCustomObject]$currentBSSID
+                    $currentBSSID = @{}
+                }
                 $currentSSID = $l -replace "SSID \d+ : ", ""
             } elseif ($l.StartsWith("BSSID")) {
-                # New access point for current SSID
+                # Flush previous BSSID (if any) before starting a new one
+                if ($currentBSSID.Keys.Count -gt 0) {
+                    $results += [PSCustomObject]$currentBSSID
+                }
                 $currentBSSID = @{ SSID = $currentSSID; BSSID = ($l -replace "BSSID \d+ : ", "") }
             } elseif ($l.StartsWith("Signal")) {
                 if ($currentBSSID.Keys.Count -gt 0) {
-                    $currentBSSID["Signal"] = $l -replace "Signal\s+: ", ""
+                    $sigRaw = $l -replace "Signal\s+: ", ""
+                    $currentBSSID["Signal"] = $sigRaw
+                    $currentBSSID["SignalPct"] = [int](($sigRaw -replace '%','').Trim())
                 }
             } elseif ($l.StartsWith("Radio type")) {
                 if ($currentBSSID.Keys.Count -gt 0) {
@@ -54,21 +64,26 @@ try {
             } elseif ($l.StartsWith("Channel")) {
                 if ($currentBSSID.Keys.Count -gt 0) {
                     $currentBSSID["Channel"] = $l -replace "Channel\s+: ", ""
-                    # End of BSSID block usually
                     $results += [PSCustomObject]$currentBSSID
                     $currentBSSID = @{}
                 }
             }
         }
 
-        if ($results.Count -gt 0) {
-            $sorted = $results | Sort-Object Signal -Descending
+        # Flush trailing BSSID block if output ended without "Channel"
+        if ($currentBSSID.Keys.Count -gt 0) {
+            $results += [PSCustomObject]$currentBSSID
+            $currentBSSID = @{}
+        }
 
-            New-Report "Wi-Fi Network Scan"
-            Add-ReportSection "Nearby Networks ($($results.Count))" $sorted "Table"
+        if ($results.Count -gt 0) {
+            $sorted = $results | Sort-Object SignalPct -Descending
+
+            $report = New-Report "Wi-Fi Network Scan"
+            $report | Add-ReportSection "Nearby Networks ($($results.Count))" $sorted "Table"
 
             $outFile = "$env:USERPROFILE\Desktop\WifiScan_$(Get-Date -Format 'yyyyMMdd_HHmm').html"
-            Export-Report-Html $outFile
+            $report | Export-Report-Html $outFile
 
             Show-Success "Scan finished. Found $($results.Count) access points."
             Invoke-Item $outFile
