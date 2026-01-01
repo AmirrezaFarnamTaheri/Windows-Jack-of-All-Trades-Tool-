@@ -127,6 +127,6 @@ function Stop-ServiceSafe ($ServiceName) {
             Wait-ServiceStatus $ServiceName "Stopped" 15
         }
     } catch {
-        Write-Log "Error stopping service $ServiceName: $($_.Exception.Message)" "Red"
+        Write-Log "Error stopping service ${ServiceName}: $($_.Exception.Message)" "Red"
     }
 }
