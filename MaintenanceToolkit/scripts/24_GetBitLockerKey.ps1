@@ -22,7 +22,7 @@ try {
             $key = $vol.KeyProtector | Where-Object { $_.KeyProtectorType -eq "RecoveryPassword" }
             if ($key) {
                 $msg = "Volume: $($vol.MountPoint)`r`nID: $($key.KeyProtectorId)`r`nRecovery Key: $($key.RecoveryPassword)`r`n"
-                Write-Host $msg -ForegroundColor Green
+                Write-Log "$msg" "Green"
                 $exportContent += $msg + "`r`n"
                 $foundKeys = $true
             } else {

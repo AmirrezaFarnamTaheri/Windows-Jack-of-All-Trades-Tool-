@@ -28,5 +28,23 @@ try {
     Get-ChildItem -Path "$env:WINDIR\Prefetch" -Force -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
 } catch {}
 
+# Clear Windows Update Cache (SoftwareDistribution)
+try {
+    Write-Log "Cleaning Windows Update Cache..."
+    Stop-ServiceSafe "wuauserv"
+    Stop-ServiceSafe "bits"
+
+    $wdPath = "$env:WINDIR\SoftwareDistribution\Download"
+    if (Test-Path $wdPath) {
+        Get-ChildItem -Path $wdPath -Recurse -Force -ErrorAction SilentlyContinue | Remove-Item -Force -Recurse -ErrorAction SilentlyContinue
+        Write-Log "Windows Update downloads cleared." "Green"
+    }
+
+    Start-Service "wuauserv" -ErrorAction SilentlyContinue
+    Start-Service "bits" -ErrorAction SilentlyContinue
+} catch {
+    Write-Log "Failed to clear Windows Update cache: $($_.Exception.Message)" "Red"
+}
+
 Write-Log "Cleanup Complete." "Green"
 Pause-If-Interactive
