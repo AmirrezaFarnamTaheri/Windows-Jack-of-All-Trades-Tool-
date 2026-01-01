@@ -54,6 +54,7 @@ namespace SystemMaintenance
         private bool isDarkMode = false;
         private bool isBatchMode = false;
         private Process currentProcess;
+        private int scriptRunning = 0;
         private object processLock = new object();
         private const string SETTINGS_FILE = "settings.cfg";
         private CancellationTokenSource batchCts;
@@ -92,6 +93,18 @@ namespace SystemMaintenance
             InitializeLayout();
             ApplyTheme();
             LoadCategory("DASHBOARD");
+
+            this.FormClosing += OnFormClosing;
+        }
+
+        private void OnFormClosing(object sender, FormClosingEventArgs e)
+        {
+            // Dispose all cached script cards to prevent memory leaks
+            foreach (var card in scriptCardCache.Values)
+            {
+                card.Dispose();
+            }
+            scriptCardCache.Clear();
         }
 
         private void InitializeLayout()
@@ -347,14 +360,35 @@ namespace SystemMaintenance
 
                 // Basic Markdown to HTML
                 string html = "<html><body style='font-family:Segoe UI; padding:20px; color:" + (isDarkMode ? "#EEE" : "#222") + "; background-color:" + (isDarkMode ? "#222" : "#FFF") + "'>";
-                foreach(var line in content.Split('\n')) {
+                bool inList = false;
+
+                foreach (var line in content.Split('\n')) {
                     string l = line.Trim();
-                    if (l.StartsWith("# ")) html += "<h1>" + l.Substring(2) + "</h1>";
-                    else if (l.StartsWith("## ")) html += "<h2>" + l.Substring(3) + "</h2>";
-                    else if (l.StartsWith("### ")) html += "<h3>" + l.Substring(4) + "</h3>";
-                    else if (l.StartsWith("- ")) html += "<li>" + l.Substring(2) + "</li>";
-                    else if (l.Length > 0) html += "<p>" + l + "</p>";
+                    string safe = System.Net.WebUtility.HtmlEncode(l);
+
+                    if (l.StartsWith("# ")) {
+                        if (inList) { html += "</ul>"; inList = false; }
+                        html += "<h1>" + System.Net.WebUtility.HtmlEncode(l.Substring(2)) + "</h1>";
+                    }
+                    else if (l.StartsWith("## ")) {
+                        if (inList) { html += "</ul>"; inList = false; }
+                        html += "<h2>" + System.Net.WebUtility.HtmlEncode(l.Substring(3)) + "</h2>";
+                    }
+                    else if (l.StartsWith("### ")) {
+                        if (inList) { html += "</ul>"; inList = false; }
+                        html += "<h3>" + System.Net.WebUtility.HtmlEncode(l.Substring(4)) + "</h3>";
+                    }
+                    else if (l.StartsWith("- ")) {
+                        if (!inList) { html += "<ul>"; inList = true; }
+                        html += "<li>" + System.Net.WebUtility.HtmlEncode(l.Substring(2)) + "</li>";
+                    }
+                    else if (l.Length > 0) {
+                        if (inList) { html += "</ul>"; inList = false; }
+                        html += "<p>" + safe + "</p>";
+                    }
                 }
+
+                if (inList) html += "</ul>";
                 html += "</body></html>";
 
                 WebBrowser web = new WebBrowser { Dock = DockStyle.Fill, MinimumSize = new Size(20,20), Tag = "WEB_HELP" };
@@ -425,8 +459,17 @@ namespace SystemMaintenance
             else favoriteScripts.Add(script.FileName);
             SaveSettings();
 
-            // If currently viewing favorites, we need to refresh the view immediately
-            // But if we use cached cards, removing it from view is enough.
+            // Rebuild favorites category from the updated set
+            categories["FAVORITES"].Clear();
+            foreach(var kvp in categories.Where(k => k.Key != "FAVORITES"))
+            {
+                foreach(var s in kvp.Value)
+                {
+                    if (favoriteScripts.Contains(s.FileName))
+                        categories["FAVORITES"].Add(s);
+                }
+            }
+
             if (currentCategory == "FAVORITES") LoadCategory("FAVORITES");
         }
 
@@ -434,7 +477,11 @@ namespace SystemMaintenance
 
         private void RunScript(ScriptInfo script)
         {
-            if (currentProcess != null && !currentProcess.HasExited) { MessageBox.Show("A script is already running."); return; }
+            if (Interlocked.CompareExchange(ref scriptRunning, 1, 0) != 0)
+            {
+                MessageBox.Show("A script is already running.");
+                return;
+            }
 
             Log("Starting: " + script.DisplayName);
             statusLabel.Text = "Running: " + script.DisplayName;
@@ -448,6 +495,7 @@ namespace SystemMaintenance
                     statusLabel.Text = "Ready";
                     progressBar.Visible = false;
                     btnCancel.Visible = false;
+                    Interlocked.Exchange(ref scriptRunning, 0);
                 }));
             });
         }
@@ -549,7 +597,13 @@ namespace SystemMaintenance
             if (batchCts != null) batchCts.Cancel();
             lock(processLock) {
                 if (currentProcess != null && !currentProcess.HasExited) {
-                    try { currentProcess.Kill(); Log("Process cancelled by user."); } catch {}
+                    try {
+                        currentProcess.Kill();
+                        Log("Process cancelled by user.");
+                        currentProcess = null;
+                    } catch (Exception ex) {
+                        Log("Error cancelling process: " + ex.Message);
+                    }
                 }
             }
         }
@@ -561,10 +615,9 @@ namespace SystemMaintenance
         }
 
         private void TxtSearch_TextChanged(object sender, EventArgs e) {
-            string q = txtSearch.Text.Trim().ToLower(); // Trimmed
+            string q = txtSearch.Text.Trim().ToLower();
             if (string.IsNullOrWhiteSpace(q)) {
-                 if (currentCategory == "SEARCH") LoadCategory("DASHBOARD");
-                 else LoadCategory(currentCategory);
+                 LoadCategory(currentCategory);
                  return;
             }
 
