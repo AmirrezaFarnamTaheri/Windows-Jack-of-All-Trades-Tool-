@@ -37,7 +37,7 @@ try {
                 Write-Log "Success: $App removed." "Green"
                 $removedCount++
             } catch {
-                Write-Log "Failed to remove $App: $($_.Exception.Message)" "Red"
+                Write-Log "Failed to remove ${App}: $($_.Exception.Message)" "Red"
             }
         } else {
             # Verbose logging only, to keep UI clean
