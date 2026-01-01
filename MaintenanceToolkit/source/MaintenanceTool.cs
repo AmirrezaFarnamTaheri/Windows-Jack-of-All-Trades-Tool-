@@ -94,22 +94,39 @@ namespace SystemMaintenance
 
             // --- Sidebar Construction ---
             Panel sidebarHeader = new Panel { Dock = DockStyle.Top, Height = 80, BackColor = Color.Transparent };
+            Button btnMenu = new Button {
+                Text = "≡",
+                Dock = DockStyle.Left,
+                Width = 50,
+                FlatStyle = FlatStyle.Flat,
+                FlatAppearance = { BorderSize = 0 },
+                Font = new Font("Segoe UI", 14F),
+                ForeColor = Color.White
+            };
+            btnMenu.Click += (s,e) => {
+                sidebarPanel.Width = sidebarPanel.Width == 220 ? 60 : 220;
+                foreach(Control c in sidebarPanel.Controls) {
+                    if (c is Button && c.Tag != null) ((Button)c).Text = sidebarPanel.Width == 220 ? c.Tag.ToString() : "";
+                }
+            };
+
             Label lblTitle = new Label {
-                Text = "MAINTENANCE\nTOOLKIT",
+                Text = "TOOLKIT",
                 Dock = DockStyle.Fill,
                 TextAlign = ContentAlignment.MiddleCenter,
                 Font = new Font("Segoe UI", 12F, FontStyle.Bold),
                 ForeColor = Color.White
             };
             sidebarHeader.Controls.Add(lblTitle);
+            sidebarHeader.Controls.Add(btnMenu);
             sidebarPanel.Controls.Add(sidebarHeader);
 
             // Categories
-            string[] cats = { "FAVORITES", "CLEAN", "REPAIR", "HARDWARE", "NETWORK", "SECURITY", "UTILS" };
+            string[] cats = { "DASHBOARD", "FAVORITES", "CLEAN", "REPAIR", "HARDWARE", "NETWORK", "SECURITY", "UTILS" };
             foreach (var cat in cats)
             {
                 Button btn = CreateSidebarButton(cat);
-                sidebarPanel.Controls.Add(btn); // Added in reverse order due to Dock.Top, handled below by bringing to front or reverse loop
+                sidebarPanel.Controls.Add(btn);
                 sidebarButtons.Add(btn);
             }
 
@@ -236,7 +253,7 @@ namespace SystemMaintenance
 
             // Finalize
             ApplyTheme();
-            LoadCategory("FAVORITES"); // Default
+            LoadCategory("DASHBOARD"); // Default
         }
 
         private Button CreateSidebarButton(string text)
@@ -289,8 +306,12 @@ namespace SystemMaintenance
                 }
             }
 
+            // Special Dashboard Handling
+            if (category == "DASHBOARD") {
+                RenderDashboard();
+            }
             // Add cached buttons to panel
-            if (buttonCache.ContainsKey(category))
+            else if (buttonCache.ContainsKey(category))
             {
                 foreach(var btn in buttonCache[category])
                 {
@@ -305,14 +326,47 @@ namespace SystemMaintenance
             scriptsPanel.ResumeLayout();
         }
 
+        private void RenderDashboard() {
+            Panel dash = new Panel { Dock = DockStyle.Top, Height = 400, Padding = new Padding(20) };
+
+            Label lblWelcome = new Label { Text = "System Status", Font = new Font("Segoe UI", 16F, FontStyle.Bold), Dock = DockStyle.Top, Height = 40, ForeColor = isDarkMode ? Color.White : Color.Black };
+            Label lblStats = new Label { Text = GetDetailedSystemInfo(), Font = new Font("Segoe UI", 11F), Dock = DockStyle.Top, Height = 100, AutoSize = false, ForeColor = isDarkMode ? Color.LightGray : Color.DarkSlateGray };
+
+            Label lblQuick = new Label { Text = "Quick Actions", Font = new Font("Segoe UI", 14F, FontStyle.Bold), Dock = DockStyle.Top, Height = 40, ForeColor = isDarkMode ? Color.White : Color.Black };
+
+            FlowLayoutPanel quickPanel = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 150, AutoScroll = false };
+            // Add top 3 scripts
+            string[] quickScripts = { "2_InstallCleaningTools.ps1", "9_DiskHealthCheck.ps1", "1_CreateRestorePoint.ps1" };
+            foreach(var s in quickScripts) {
+                // Find script info - inefficient but works
+                foreach(var cat in categories.Values) {
+                    var script = cat.FirstOrDefault(x => x.FileName == s);
+                    if(script != null) {
+                        quickPanel.Controls.Add(CreateScriptButton(script));
+                        break;
+                    }
+                }
+            }
+
+            dash.Controls.Add(quickPanel);
+            dash.Controls.Add(lblQuick);
+            dash.Controls.Add(lblStats);
+            dash.Controls.Add(lblWelcome);
+
+            scriptsPanel.Controls.Add(dash);
+        }
+
         private void InitializeData()
         {
             string[] cats = { "CLEAN", "REPAIR", "HARDWARE", "NETWORK", "SECURITY", "UTILS" };
             categories["FAVORITES"] = new List<ScriptInfo>();
+            categories["DASHBOARD"] = new List<ScriptInfo>(); // Dashboard is special, but needs a key
             foreach (var c in cats) categories[c] = new List<ScriptInfo>();
-            // Also Initialize ButtonCache to avoid null ref if batch mode accessed before view
+
+            // Initialize Cache
             foreach (var c in cats) buttonCache[c] = new List<Button>();
             buttonCache["FAVORITES"] = new List<Button>();
+            buttonCache["DASHBOARD"] = new List<Button>();
 
             // --- DEFINITIONS (Same as before) ---
             // CLEAN
@@ -563,9 +617,33 @@ namespace SystemMaintenance
 
         private void FilterButtons(string query) {
              scriptsPanel.SuspendLayout();
-             foreach(Button btn in allScriptButtons) {
-                 ScriptInfo s = (ScriptInfo)btn.Tag;
-                 btn.Visible = string.IsNullOrWhiteSpace(query) || s.DisplayName.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0;
+             if (string.IsNullOrWhiteSpace(query)) {
+                 // Restore current category view
+                 if (currentCategory == "SEARCH_RESULTS") LoadCategory("DASHBOARD"); // Or previous
+                 else LoadCategory(currentCategory);
+             } else {
+                 // Switch to search mode
+                 currentCategory = "SEARCH_RESULTS";
+                 scriptsPanel.Controls.Clear();
+                 allScriptButtons.Clear();
+
+                 var seen = new HashSet<string>();
+                 // Iterate all categories
+                 foreach(var cat in categories) {
+                     if (cat.Key == "FAVORITES" || cat.Key == "DASHBOARD") continue; // Skip dups
+                     foreach(var s in cat.Value) {
+                         if (s.DisplayName.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0 && seen.Add(s.FileName)) {
+                             Button btn = CreateScriptButton(s);
+                             scriptsPanel.Controls.Add(btn);
+                             allScriptButtons.Add(btn);
+                         }
+                     }
+                 }
+                 // If no results
+                 if (allScriptButtons.Count == 0) {
+                     Label lbl = new Label { Text = "No results found.", AutoSize = true, ForeColor = isDarkMode ? Color.White : Color.Black, Font = new Font("Segoe UI", 12F) };
+                     scriptsPanel.Controls.Add(lbl);
+                 }
              }
              scriptsPanel.ResumeLayout();
         }

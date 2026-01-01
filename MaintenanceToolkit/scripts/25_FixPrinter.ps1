@@ -4,7 +4,7 @@ Write-Header "Fixing Stuck Printer Spooler"
 
 try {
     Write-Log "Stopping Print Spooler..."
-    Stop-Service Spooler -Force -ErrorAction SilentlyContinue
+    Stop-ServiceSafe "Spooler" -ErrorAction SilentlyContinue
 
     Write-Log "Clearing Spooler files..."
     Remove-Item "$env:WINDIR\System32\spool\PRINTERS\*" -Force -Recurse -ErrorAction SilentlyContinue
