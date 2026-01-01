@@ -1,53 +1,27 @@
 . "$PSScriptRoot/lib/Common.ps1"
-Assert-Admin
-$ToolkitPath = $PSScriptRoot
+# Non-Interactive Maintenance Script
+Write-Log "Starting Weekly Maintenance..."
 
-# Start Logging
-$LogPath = "$ToolkitPath\MaintenanceLog.txt"
-$Date = Get-Date
-Add-Content $LogPath "[$Date] Starting Weekly Maintenance..."
-
-# 1. Run Deep Disk Clean
 try {
-    Write-Log "Running Deep Disk Clean..."
-    & "$ToolkitPath\4_DeepCleanDisk.ps1"
-    Add-Content $LogPath " - Disk Cleanup: Success"
-} catch {
-    Add-Content $LogPath " - Disk Cleanup: FAILED"
-}
+    # 1. Restore Point
+    . "$PSScriptRoot\1_CreateRestorePoint.ps1"
 
-# 2. Run Nuclear Temp Clean
-try {
-    Write-Log "Running Temp Clean..."
-    & "$ToolkitPath\13_NuclearTempClean.ps1"
-    Add-Content $LogPath " - Temp Clean: Success"
-} catch {
-    Add-Content $LogPath " - Temp Clean: FAILED"
-}
+    # 2. Disk Cleanup
+    # We use Cleanmgr /sagerun:1 (assumes configured)
+    Start-Process cleanmgr.exe -ArgumentList "/sagerun:1" -Wait -NoNewWindow
+    Write-Log "Disk Cleanup Ran."
 
-# 3. Update All Software
-try {
-    Write-Log "Updating Software..."
+    # 3. Updates
     if (Test-IsWingetAvailable) {
-        winget upgrade --all --include-unknown --accept-package-agreements --accept-source-agreements
-        Add-Content $LogPath " - Software Updates: Success"
-    } else {
-        Add-Content $LogPath " - Software Updates: Skipped (Winget missing)"
+        Start-Process winget -ArgumentList "upgrade --all --include-unknown --accept-package-agreements --accept-source-agreements" -Wait -NoNewWindow
+        Write-Log "Software Updated."
     }
-} catch {
-    Add-Content $LogPath " - Software Updates: FAILED"
-}
 
-# 4. Safe Debloat (To catch any new junk Windows installed)
-try {
-    Write-Log "Checking for Bloatware..."
-    & "$ToolkitPath\5_SafeDebloat.ps1"
-    Add-Content $LogPath " - Debloat Check: Success"
-} catch {
-    Add-Content $LogPath " - Debloat Check: FAILED"
-}
+    # 4. Defender Scan
+    Start-Process "MpCmdRun.exe" -ArgumentList "-Scan -ScanType 1" -Wait -NoNewWindow
+    Write-Log "Defender Quick Scan Ran."
 
-$EndDate = Get-Date
-Add-Content $LogPath "[$EndDate] Maintenance Complete."
-Add-Content $LogPath "------------------------------------------------"
-Write-Log "Weekly Maintenance Complete." "Green"
+    Show-Success "Weekly Maintenance Complete."
+} catch {
+    Show-Error "Weekly Maintenance Failed: $($_.Exception.Message)"
+}

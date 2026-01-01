@@ -1,33 +1,40 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
 Write-Header "Dead Pixel Fixer"
-Write-Log "Opening Pixel Flasher window..."
-Write-Log "Drag the flashing window over stuck pixels." "Cyan"
-Write-Log "Close the window to stop." "Yellow"
+Get-SystemSummary
+Write-Section "Instructions"
+Write-Log "This script will flash colors rapidly to try and unstuck pixels." "Cyan"
+Write-Log "Press ESC to stop." "Yellow"
+Write-Host "`nPress any key to START..." -ForegroundColor White
+if (-not [Console]::IsInputRedirected) { $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown") }
 
 try {
     Add-Type -AssemblyName System.Windows.Forms
     $form = New-Object System.Windows.Forms.Form
-    $form.Size = New-Object System.Drawing.Size(200,200)
-    $form.Text = "Drag over Pixel"
+    $form.WindowState = "Maximized"
+    $form.FormBorderStyle = "None"
     $form.TopMost = $true
-    $form.StartPosition = "CenterScreen"
+    $form.Cursor = [System.Windows.Forms.Cursors]::WaitCursor
 
     $timer = New-Object System.Windows.Forms.Timer
     $timer.Interval = 100
-    $colors = @('Red', 'Green', 'Blue', 'White', 'Black')
-    $i = 0
+    $colors = @([System.Drawing.Color]::Red, [System.Drawing.Color]::Green, [System.Drawing.Color]::Blue, [System.Drawing.Color]::White, [System.Drawing.Color]::Black)
+    $rnd = New-Object Random
 
     $timer.Add_Tick({
-        $form.BackColor = $colors[$script:i % $colors.Count]
-        $script:i++
+        $form.BackColor = $colors[$rnd.Next($colors.Count)]
+    })
+
+    $form.Add_KeyDown({
+        if ($_.KeyCode -eq "Escape") { $form.Close() }
     })
 
     $timer.Start()
-    $form.ShowDialog()
+    $form.ShowDialog() | Out-Null
 
-    Write-Log "Pixel Fixer Closed." "Green"
+    Show-Success "Pixel Fixer finished."
+
 } catch {
-    Write-Log "Error: $($_.Exception.Message)" "Red"
+    Show-Error "Error: $($_.Exception.Message)"
 }
 Pause-If-Interactive

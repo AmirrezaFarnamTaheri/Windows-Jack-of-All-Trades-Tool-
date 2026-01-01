@@ -35,9 +35,15 @@ function Show-Error ($Message) {
 function Get-SystemSummary {
     $os = Get-CimInstance Win32_OperatingSystem
     $cpu = Get-CimInstance Win32_Processor
+
+    # Disk Space (C:)
+    $drive = Get-PSDrive C -ErrorAction SilentlyContinue
+    $freeGB = "N/A"
+    if ($drive) { $freeGB = "$([math]::Round($drive.Free/1GB, 1)) GB" }
+
     Write-Log "OS: $($os.Caption)" "Gray"
     Write-Log "CPU: $($cpu.Name)" "Gray"
-    Write-Log "Free RAM: $([math]::Round($os.FreePhysicalMemory/1024,0)) MB" "Gray"
+    Write-Log "Free RAM: $([math]::Round($os.FreePhysicalMemory/1024,0)) MB  |  Free Disk (C:): $freeGB" "Gray"
 }
 
 function Pause-If-Interactive {

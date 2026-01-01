@@ -1,19 +1,42 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
-Write-Header "Quick Backup (Documents Mirror)"
+Write-Header "Quick Backup (Documents)"
+Get-SystemSummary
+Write-Section "Configuration"
 
 $source = [Environment]::GetFolderPath("MyDocuments")
-$dest = "D:\Backups\Documents" # Simplified. Real world would ask.
-$dest = Read-Host "Enter Backup Destination Path (e.g. E:\Backup)"
+$dest = Read-Host "Enter backup destination path (e.g. D:\Backups)"
+
+if ([string]::IsNullOrWhiteSpace($dest)) {
+    Show-Error "Destination is required."
+    Pause-If-Interactive
+    Exit
+}
 
 try {
+    Write-Section "Backing Up"
     if (-not (Test-Path $dest)) { New-Item $dest -ItemType Directory -Force | Out-Null }
 
-    Write-Log "Mirroring $source to $dest..."
-    robocopy "$source" "$dest" /MIR /R:1 /W:1 /NP /MT:8
+    $destPath = "$dest\DocsBackup_$(Get-Date -Format 'yyyyMMdd')"
+    Write-Log "Source: $source" "White"
+    Write-Log "Dest:   $destPath" "White"
 
-    Write-Log "Backup Process Finished." "Green"
+    # Robocopy
+    # /MIR = Mirror
+    # /R:3 /W:5 = Retry 3 times, wait 5 sec
+    # /MT:8 = Multi-threaded
+
+    $roboArgs = "`"$source`"", "`"$destPath`"", "/MIR", "/R:3", "/W:5", "/MT:8", "/NP", "/NFL", "/NDL"
+
+    Start-Process robocopy -ArgumentList $roboArgs -Wait -NoNewWindow
+
+    if ($LASTEXITCODE -lt 8) {
+        Show-Success "Backup completed successfully."
+    } else {
+        Show-Error "Backup completed with errors (Code: $LASTEXITCODE)."
+    }
+
 } catch {
-    Write-Log "Error: $($_.Exception.Message)" "Red"
+    Show-Error "Error: $($_.Exception.Message)"
 }
 Pause-If-Interactive

@@ -1,19 +1,25 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
-Write-Header "Take Ownership of File/Folder"
-$target = Read-Host "Enter file or folder path"
+Write-Header "Take Ownership (Fix Access Denied)"
+Get-SystemSummary
+Write-Section "Input"
+
+$path = Read-Host "Enter folder path"
 
 try {
-    if (Test-Path $target) {
-        Write-Log "Taking ownership..."
-        takeown /f "$target" /r /d y
-        Write-Log "Granting permissions..."
-        icacls "$target" /grant Administrators:F /t
-        Write-Log "Ownership taken." "Green"
+    if (Test-Path $path) {
+        Write-Section "Processing"
+        Write-Log "Taking Ownership..." "Cyan"
+        takeown /f "$path" /r /d y
+
+        Write-Log "Granting Admin Permissions..." "Cyan"
+        icacls "$path" /grant Administrators:F /t
+
+        Show-Success "Ownership taken and permissions reset."
     } else {
-        Write-Log "Path not found." "Red"
+        Show-Error "Path not found."
     }
 } catch {
-    Write-Log "Error: $($_.Exception.Message)" "Red"
+    Show-Error "Error: $($_.Exception.Message)"
 }
 Pause-If-Interactive

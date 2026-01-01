@@ -1,36 +1,27 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
-$TaskName = "SundayNightMaintenance"
-# Use absolute path for Task Scheduler
-$ScriptPath = "$PSScriptRoot\_WeeklyMaintenance.ps1"
+Write-Header "Setup Auto-Maintenance Schedule"
+Get-SystemSummary
+Write-Section "Configuration"
 
-Write-Header "Setup Weekly Auto-Maintenance"
+$taskName = "MaintenanceToolkit_Weekly"
+$scriptPath = "$PSScriptRoot\_WeeklyMaintenance.ps1"
 
-# Check if script exists
-if (-not (Test-Path $ScriptPath)) {
-    Write-Log "ERROR: Could not find $ScriptPath" "Red"
-    Write-Log "Please ensure you run this script from the MaintenanceToolkit folder." "Yellow"
-    if (-not [Console]::IsInputRedirected) { Pause }
-    Exit
-}
-
-# Define Action
-$Action = New-ScheduledTaskAction -Execute "PowerShell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$ScriptPath`""
-
-# Define Trigger (Weekly, Sundays at 8pm)
-$Trigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Sunday -At 8:00PM
-
-# Define Settings
-$Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries:$false -DontStopIfGoingOnBatteries:$false -StartWhenAvailable -RunOnlyIfNetworkAvailable
-$Principal = New-ScheduledTaskPrincipal -UserId "NT AUTHORITY\SYSTEM" -LogonType ServiceAccount -RunLevel Highest
-
-# Register the Task
 try {
-    Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Settings $Settings -Principal $Principal -Force
-    Write-Log "Success! Your PC will now self-clean every Sunday at 8:00 PM." "Green"
-    Write-Log "(The laptop must be plugged in for it to run)." "Yellow"
-}
-catch {
-    Write-Log "Error creating task: $($_.Exception.Message)" "Red"
+    if (Test-Path $scriptPath) {
+        Write-Log "Registering Scheduled Task..." "Cyan"
+
+        $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-ExecutionPolicy Bypass -File `"$scriptPath`""
+        $trigger = New-ScheduledTaskTrigger -Weekly -At 3am -DaysOfWeek Sunday
+        $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+
+        Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Force | Out-Null
+
+        Show-Success "Task '$taskName' registered to run Weekly on Sundays at 3AM."
+    } else {
+        Show-Error "Weekly maintenance script not found at $scriptPath"
+    }
+} catch {
+    Show-Error "Error: $($_.Exception.Message)"
 }
 Pause-If-Interactive
