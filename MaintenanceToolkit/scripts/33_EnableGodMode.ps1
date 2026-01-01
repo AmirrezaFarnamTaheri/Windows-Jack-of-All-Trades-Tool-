@@ -1,6 +1,8 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
 Write-Header "Enabling God Mode"
+Get-SystemSummary
+Write-Section "Execution"
 
 try {
     $desktop = [Environment]::GetFolderPath("Desktop")
@@ -9,11 +11,11 @@ try {
 
     if (-not (Test-Path $path)) {
         New-Item -Path $path -ItemType Directory | Out-Null
-        Write-Log "God Mode folder created on Desktop." "Green"
+        Show-Success "God Mode folder created on Desktop."
     } else {
         Write-Log "God Mode folder already exists." "Yellow"
     }
 } catch {
-    Write-Log "Error: $($_.Exception.Message)" "Red"
+    Show-Error "Error: $($_.Exception.Message)"
 }
 Pause-If-Interactive
