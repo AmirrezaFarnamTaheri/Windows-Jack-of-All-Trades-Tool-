@@ -363,7 +363,24 @@ namespace SystemMaintenance
                 if (!File.Exists(helpPath)) helpPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "HELP.md");
                 if (!File.Exists(helpPath)) helpPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "MaintenanceToolkit", "HELP.md");
 
-                string content = File.Exists(helpPath) ? File.ReadAllText(helpPath) : "# Error\nHelp file not found.";
+                string content = null;
+                if (File.Exists(helpPath)) content = File.ReadAllText(helpPath);
+
+                // Fallback to embedded resource
+                if (content == null) {
+                    try {
+                        var assembly = System.Reflection.Assembly.GetExecutingAssembly();
+                        using (Stream stream = assembly.GetManifestResourceStream("HELP.md")) {
+                            if (stream != null) {
+                                using (StreamReader reader = new StreamReader(stream)) {
+                                    content = reader.ReadToEnd();
+                                }
+                            }
+                        }
+                    } catch {}
+                }
+
+                if (content == null) content = "# Error\nHelp file not found.";
 
                 // Basic Markdown to HTML
                 string html = "<html><body style='font-family:Segoe UI; padding:20px; color:" + (isDarkMode ? "#EEE" : "#222") + "; background-color:" + (isDarkMode ? "#222" : "#FFF") + "'>";

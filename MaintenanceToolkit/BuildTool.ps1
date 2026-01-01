@@ -37,6 +37,13 @@ if (Test-Path $ScriptDir) {
     }
 }
 
+# Embed HELP.md
+$HelpFile = Join-Path $PSScriptRoot "HELP.md"
+if (Test-Path $HelpFile) {
+    $ResourceFlags += " /resource:`"$HelpFile`",`"HELP.md`""
+    Write-Host "Embedding: HELP.md" -ForegroundColor Gray
+}
+
 # Compile Command
 # We link Windows Forms, Drawing, System.Management (for WMI checks), and the Manifest
 $BuildCmd = "& '$($CSC.FullName)' /target:winexe /out:'$OutputFile' /win32manifest:'$ManifestFile' /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Management.dll $ResourceFlags '$SourceFile'"
