@@ -769,6 +769,53 @@ namespace SystemMaintenance
             statusStrip.ForeColor = isDarkMode ? Color.White : Color.Black;
         }
 
+        private void SaveLogToFile()
+        {
+            using (SaveFileDialog sfd = new SaveFileDialog())
+            {
+                sfd.Filter = "Text Files (*.txt)|*.txt|All Files (*.*)|*.*";
+                sfd.FileName = "MaintenanceLog_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".txt";
+                if (sfd.ShowDialog() == DialogResult.OK)
+                {
+                    try
+                    {
+                        File.WriteAllText(sfd.FileName, txtLog.Text);
+                        MessageBox.Show("Log saved successfully.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show("Error saving log: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
+                }
+            }
+        }
+
+        private string GetDetailedSystemInfo()
+        {
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine("OS: " + Environment.OSVersion.ToString());
+            sb.AppendLine("Machine: " + Environment.MachineName);
+            sb.AppendLine("User: " + Environment.UserName);
+            sb.AppendLine("Processors: " + Environment.ProcessorCount);
+            sb.AppendLine("64-bit OS: " + Environment.Is64BitOperatingSystem);
+
+            try {
+                using (var searcher = new ManagementObjectSearcher("SELECT TotalVisibleMemorySize, FreePhysicalMemory FROM Win32_OperatingSystem"))
+                {
+                    foreach (var item in searcher.Get())
+                    {
+                        long totalRam = Convert.ToInt64(item["TotalVisibleMemorySize"]) / 1024;
+                        long freeRam = Convert.ToInt64(item["FreePhysicalMemory"]) / 1024;
+                        sb.AppendLine(string.Format("RAM: {0} MB Free / {1} MB Total", freeRam, totalRam));
+                    }
+                }
+            } catch {
+                 sb.AppendLine("RAM: Info unavailable");
+            }
+
+            return sb.ToString();
+        }
+
         public static bool IsAdministrator()
         {
             using (WindowsIdentity identity = WindowsIdentity.GetCurrent())
