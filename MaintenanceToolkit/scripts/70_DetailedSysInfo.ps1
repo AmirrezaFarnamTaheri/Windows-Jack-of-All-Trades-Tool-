@@ -19,13 +19,13 @@ try {
     # Security Summary
     "`n--- SECURITY STATUS ---" | Out-File $outFile -Append -Encoding UTF8
     try {
-        $av = Get-CimInstance -Namespace root/SecurityCenter2 -ClassName AntivirusProduct -ErrorAction SilentlyContinue
+        $av = Get-CimInstance -Namespace root/SecurityCenter2 -ClassName AntivirusProduct -ErrorAction Stop
         if ($av) {
             foreach ($a in $av) {
                 "Antivirus: $($a.displayName)" | Out-File $outFile -Append -Encoding UTF8
             }
         } else {
-             "Antivirus: Unknown/ServerOS" | Out-File $outFile -Append -Encoding UTF8
+             "Antivirus: Not Found" | Out-File $outFile -Append -Encoding UTF8
         }
     } catch { "Antivirus Check Failed" | Out-File $outFile -Append -Encoding UTF8 }
 

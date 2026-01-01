@@ -185,3 +185,15 @@ function Stop-ServiceSafe ($ServiceName) {
         throw
     }
 }
+
+function Get-FolderSize ($Path) {
+    if (-not (Test-Path $Path)) { return 0 }
+    $size = (Get-ChildItem $Path -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
+    if ($size) { return $size } else { return 0 }
+}
+
+function Format-Size ($Bytes) {
+    if ($Bytes -gt 1GB) { return "$([math]::Round($Bytes / 1GB, 2)) GB" }
+    if ($Bytes -gt 1MB) { return "$([math]::Round($Bytes / 1MB, 2)) MB" }
+    return "$([math]::Round($Bytes / 1KB, 2)) KB"
+}

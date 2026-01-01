@@ -272,7 +272,15 @@ namespace SystemMaintenance
             btnCancel.Click += BtnCancel_Click;
 
             Button btnCopyLog = new Button { Text = "Copy", Dock = DockStyle.Right, Width = 60, FlatStyle = FlatStyle.Flat };
-            btnCopyLog.Click += (s,e) => { if (!string.IsNullOrEmpty(txtLog.Text)) Clipboard.SetText(txtLog.Text); };
+            btnCopyLog.Click += (s,e) => {
+                if (!string.IsNullOrEmpty(txtLog.Text)) {
+                    try {
+                        Clipboard.SetText(txtLog.Text);
+                    } catch (System.Runtime.InteropServices.ExternalException) {
+                        MessageBox.Show("Failed to copy to clipboard.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    }
+                }
+            };
 
             Button btnSaveLog = new Button { Text = "Save", Dock = DockStyle.Right, Width = 60, FlatStyle = FlatStyle.Flat };
             btnSaveLog.Click += (s,e) => SaveLogToFile();
@@ -730,27 +738,21 @@ namespace SystemMaintenance
             }
 
             try {
-                // Correctly place -Verbose before -File to ensure it applies to the PowerShell session (or script if bound)
-                // Note: Regular scripts without CmdletBinding might ignore -Verbose unless we pass it as a switch to the engine or set the preference.
-                // We will set the environment variable MAINTENANCE_DIAG to 1 for reliable diagnostics in our custom scripts.
                 string args = string.Format("-NoProfile -ExecutionPolicy Bypass {0} -File \"{1}\"", script.IsInteractive ? "-NoExit" : "-NonInteractive", path);
-                if (chkVerbose.Checked) {
-                     // We prepend Verbose to the arguments list if we wanted to affect the engine,
-                     // but for our custom scripts, we use the Env Var approach below.
-                     // However, passing -Verbose to the engine helps with some internal cmdlets.
-                     args = "-Verbose " + args;
-                }
 
                 ProcessStartInfo psi = new ProcessStartInfo("powershell.exe", args);
+
+                // Ensure we can set environment variables (requires UseShellExecute = false)
+                psi.UseShellExecute = false;
+
+                // If interactive, we want a window. If not, no window.
+                psi.CreateNoWindow = !script.IsInteractive;
 
                 // Set Diagnostic Env Var
                 if (chkVerbose.Checked) {
                     if (psi.EnvironmentVariables.ContainsKey("MAINTENANCE_DIAG")) psi.EnvironmentVariables["MAINTENANCE_DIAG"] = "1";
                     else psi.EnvironmentVariables.Add("MAINTENANCE_DIAG", "1");
                 }
-
-                psi.UseShellExecute = script.IsInteractive;
-                psi.CreateNoWindow = !script.IsInteractive;
                 if (!script.IsInteractive) {
                     psi.StandardOutputEncoding = Encoding.UTF8;
                     psi.StandardErrorEncoding = Encoding.UTF8;
@@ -936,6 +938,7 @@ namespace SystemMaintenance
 
             chkBatchMode.ForeColor = isBatchMode ? Color.White : fg;
             chkVerbose.ForeColor = chkVerbose.Checked ? Color.White : fg;
+            chkVerbose.BackColor = chkVerbose.Checked ? colAccent : Color.Transparent;
 
             // Update Cached Cards
             foreach(var card in scriptCardCache.Values) {
