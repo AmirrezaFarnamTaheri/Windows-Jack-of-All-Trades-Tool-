@@ -6,20 +6,36 @@ Write-Section "Local Accounts"
 
 try {
     $users = Get-WmiObject Win32_UserAccount -Filter "LocalAccount=True"
+    $userReport = @()
 
     foreach ($u in $users) {
-        $status = if ($u.Disabled) { "Disabled" } else { "Active" }
-        $lock = if ($u.Lockout) { "LOCKED" } else { "Unlocked" }
+        $status = if ($u.Disabled) { "<span class='status-warn'>Disabled</span>" } else { "<span class='status-pass'>Active</span>" }
+        $lock = if ($u.Lockout) { "<span class='status-fail'>LOCKED</span>" } else { "Unlocked" }
 
-        Write-Host "User: " -NoNewline -ForegroundColor Gray
-        Write-Host "$($u.Name)" -NoNewline -ForegroundColor White
-        Write-Host " | Status: $status | $lock" -ForegroundColor Gray
-
+        $pwdReq = "Yes"
         if ($u.PasswordRequired -eq $false) {
-             Write-Log "  Warning: Password not required!" "Red"
+             $pwdReq = "<span class='status-fail'>NO (!))</span>"
+        }
+
+        $userReport += [PSCustomObject]@{
+            Username = $u.Name
+            FullName = $u.FullName
+            Status = $status
+            Lockout = $lock
+            "Password Required" = $pwdReq
+            SID = $u.SID
         }
     }
-    Show-Success "Audit Complete."
+
+    New-Report "Local User Account Audit"
+    Add-ReportSection "Local Accounts" $userReport "Table"
+
+    $outFile = "$env:USERPROFILE\Desktop\UserAudit_$(Get-Date -Format 'yyyyMMdd_HHmm').html"
+    Export-Report-Html $outFile
+
+    Show-Success "Audit Complete. Report saved to $outFile"
+    Invoke-Item $outFile
+
 } catch {
     Show-Error "Error: $($_.Exception.Message)"
 }

@@ -12,29 +12,44 @@ try {
     $historyCount = $searcher.GetTotalHistoryCount()
 
     if ($historyCount -gt 0) {
-        $history = $searcher.QueryHistory(0, $historyCount) | Select-Object Date, Title, ResultCode
+        New-Report "Windows Update History"
 
-        # Map ResultCode
-        # 2 = Succeeded, 3 = SucceededWithErrors, 4 = Failed, 5 = Aborted
+        $history = $searcher.QueryHistory(0, $historyCount)
+        $reportData = @()
 
-        $history | ForEach-Object {
-            $status = switch ($_.ResultCode) {
+        foreach ($entry in $history) {
+            $status = switch ($entry.ResultCode) {
                 2 { "Success" }
                 3 { "Partial" }
                 4 { "Failed" }
                 5 { "Aborted" }
                 default { "Unknown" }
             }
-            $color = if ($status -eq "Success") { "Green" } elseif ($status -eq "Failed") { "Red" } else { "Yellow" }
 
-            Write-Host "[$($_.Date)] " -NoNewline -ForegroundColor Gray
-            Write-Host "$status " -NoNewline -ForegroundColor $color
-            Write-Host "- $($_.Title)" -ForegroundColor White
+            # Simple color mapping for HTML status
+            $statusHtml = $status
+            if ($status -eq "Success") { $statusHtml = "<span class='status-pass'>Success</span>" }
+            elseif ($status -eq "Failed") { $statusHtml = "<span class='status-fail'>Failed</span>" }
+            elseif ($status -eq "Aborted") { $statusHtml = "<span class='status-warn'>Aborted</span>" }
+
+            $reportData += [PSCustomObject]@{
+                Date = $entry.Date
+                Status = $statusHtml
+                Title = $entry.Title
+                "Support URL" = if ($entry.SupportUrl) { "<a href='$($entry.SupportUrl)'>Link</a>" } else { "" }
+            }
         }
 
-        Show-Success "History retrieved."
+        Add-ReportSection "Update History ($historyCount items)" $reportData "Table"
+
+        $outFile = "$env:USERPROFILE\Desktop\UpdateHistory_$(Get-Date -Format 'yyyyMMdd_HHmm').html"
+        Export-Report-Html $outFile
+
+        Show-Success "History exported to $outFile"
+        Invoke-Item $outFile
+
     } else {
-        Write-Log "No update history found." "Yellow"
+        Show-Info "No update history found."
     }
 
 } catch {

@@ -37,20 +37,30 @@ foreach ($name in $targets.Keys) {
         if ($success -gt 0) {
             $avg = [math]::Round($totalTime / $success, 2)
             Write-Host "$avg ms" -ForegroundColor White
-            $results += [PSCustomObject]@{ Name=$name; IP=$ip; Time=$avg }
+            $results += [PSCustomObject]@{ Provider=$name; IP=$ip; "Avg Response (ms)"=$avg }
         } else {
             Write-Host "Failed" -ForegroundColor Red
+            $results += [PSCustomObject]@{ Provider=$name; IP=$ip; "Avg Response (ms)"="TIMEOUT" }
         }
     } catch {
         Write-Log "Error testing $name" "Red"
     }
 }
 
-Write-Section "Results"
 if ($results.Count -gt 0) {
-    $results | Sort-Object Time | Format-Table -AutoSize | Out-String | Write-Host -ForegroundColor Green
-    $best = ($results | Sort-Object Time)[0]
-    Show-Success "Fastest DNS Provider: $($best.Name) ($($best.Time) ms)"
+    $sorted = $results | Sort-Object "Avg Response (ms)"
+
+    New-Report "DNS Speed Benchmark"
+    Add-ReportSection "Benchmark Results" $sorted "Table"
+
+    $best = $sorted[0]
+    Add-ReportSection "Recommendation" "Based on this test, the fastest provider for you is <strong>$($best.Provider)</strong>." "RawHtml"
+
+    $outFile = "$env:USERPROFILE\Desktop\DNSBenchmark_$(Get-Date -Format 'yyyyMMdd_HHmm').html"
+    Export-Report-Html $outFile
+
+    Show-Success "Report generated at $outFile"
+    Invoke-Item $outFile
 } else {
     Show-Error "All DNS benchmarks failed."
 }

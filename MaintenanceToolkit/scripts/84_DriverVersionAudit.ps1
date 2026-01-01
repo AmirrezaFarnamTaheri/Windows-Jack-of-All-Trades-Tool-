@@ -9,24 +9,30 @@ try {
     $drivers = Get-WindowsDriver -Online -All | Where-Object { $_.ProviderName -ne "Microsoft" -and $_.ProviderName -ne "Microsoft Corporation" }
 
     if ($drivers) {
-        Write-Section "Third-Party Drivers"
+        New-Report "Third-Party Driver Audit"
+
+        $driverData = @()
         foreach ($d in $drivers) {
-            Write-Log "Driver: $($d.OriginalFileName)" "White"
-            Write-Log "  Provider: $($d.ProviderName)" "Gray"
-            Write-Log "  Version: $($d.Version)" "Cyan"
-            Write-Log "  Date: $($d.Date)" "Gray"
-            Write-Diagnostic "  Class: $($d.ClassName) | Inf: $($d.OriginalInfName)"
-            Write-Log "-----------------" "DarkGray"
+            $driverData += [PSCustomObject]@{
+                "Driver File" = $d.OriginalFileName
+                Provider = $d.ProviderName
+                Class = $d.ClassName
+                Version = $d.Version
+                Date = $d.Date
+                INF = $d.OriginalInfName
+            }
         }
 
-        $outFile = "$env:USERPROFILE\Desktop\Drivers_$(Get-Date -Format 'yyyyMMdd').txt"
-        $drivers |
-          Select-Object OriginalFileName, ProviderName, ClassName, Version, Date, OriginalInfName |
-          Sort-Object ProviderName, ClassName, OriginalFileName |
-          Format-Table -Wrap |
-          Out-String -Width 4096 |
-          Out-File $outFile -Encoding UTF8
+        # Sort by Provider then Class
+        $driverData = $driverData | Sort-Object Provider, Class
+
+        Add-ReportSection "Third-Party Drivers ($($drivers.Count))" $driverData "Table"
+
+        $outFile = "$env:USERPROFILE\Desktop\Drivers_$(Get-Date -Format 'yyyyMMdd_HHmm').html"
+        Export-Report-Html $outFile
+
         Show-Success "Exported list to $outFile"
+        Invoke-Item $outFile
     } else {
         Show-Info "No third-party drivers found (or access denied)."
     }

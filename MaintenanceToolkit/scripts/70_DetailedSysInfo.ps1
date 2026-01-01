@@ -4,57 +4,91 @@ Write-Header "Detailed System Info Export"
 Get-SystemSummary
 Write-Section "Execution"
 
-$outFile = "$env:USERPROFILE\Desktop\SystemSpec_$(Get-Date -Format 'yyyyMMdd_HHmm').txt"
-
 try {
     Write-Log "Gathering System Information..." "Cyan"
-    "--- SYSTEM SUMMARY ---" | Out-File $outFile -Encoding UTF8
+
+    New-Report "Detailed System Information"
 
     # OS & Boot
     $os = Get-CimInstance Win32_OperatingSystem
-    "OS: $($os.Caption) ($($os.OSArchitecture))" | Out-File $outFile -Append -Encoding UTF8
-    "Build: $($os.BuildNumber)" | Out-File $outFile -Append -Encoding UTF8
-    "Install Date: $($os.InstallDate)" | Out-File $outFile -Append -Encoding UTF8
+    Add-ReportSection "Operating System" @{
+        "OS Name" = "$($os.Caption)"
+        "Architecture" = "$($os.OSArchitecture)"
+        "Version" = "$($os.Version)"
+        "Build Number" = "$($os.BuildNumber)"
+        "Install Date" = "$($os.InstallDate)"
+        "Last Boot" = "$($os.LastBootUpTime)"
+    } "KeyValue"
+
+    # Hardware
+    $cpu = Get-CimInstance Win32_Processor
+    $ramTotal = [math]::Round($os.TotalVisibleMemorySize / 1MB, 2)
+    $ramFree = [math]::Round($os.FreePhysicalMemory / 1MB, 2)
+
+    Add-ReportSection "Hardware Summary" @{
+        "Processor" = "$($cpu.Name)"
+        "Cores / Threads" = "$($cpu.NumberOfCores) / $($cpu.NumberOfLogicalProcessors)"
+        "Total RAM" = "$ramTotal GB"
+        "Free RAM" = "$ramFree GB"
+    } "KeyValue"
 
     # Security Summary
-    "`n--- SECURITY STATUS ---" | Out-File $outFile -Append -Encoding UTF8
+    $secInfo = [ordered]@{}
     try {
         $av = Get-CimInstance -Namespace root/SecurityCenter2 -ClassName AntivirusProduct -ErrorAction Stop
         if ($av) {
             foreach ($a in $av) {
-                "Antivirus: $($a.displayName)" | Out-File $outFile -Append -Encoding UTF8
+                $status = if ($a.productState -match "1$") {"Enabled"} else {"Disabled/Unknown"}
+                $secInfo["Antivirus"] = "$($a.displayName) ($status)"
             }
         } else {
-             "Antivirus: Not Found" | Out-File $outFile -Append -Encoding UTF8
+             $secInfo["Antivirus"] = "Not Found"
         }
-    } catch { "Antivirus Check Failed" | Out-File $outFile -Append -Encoding UTF8 }
+    } catch { $secInfo["Antivirus"] = "Check Failed" }
 
     try {
         $tpm = Get-Tpm -ErrorAction SilentlyContinue
-        "TPM Ready: $($tpm.TpmReady)" | Out-File $outFile -Append -Encoding UTF8
-        "TPM Present: $($tpm.TpmPresent)" | Out-File $outFile -Append -Encoding UTF8
-    } catch { "TPM: Access Denied/Missing" | Out-File $outFile -Append -Encoding UTF8 }
+        $secInfo["TPM Present"] = "$($tpm.TpmPresent)"
+        $secInfo["TPM Ready"] = "$($tpm.TpmReady)"
+    } catch { $secInfo["TPM"] = "Access Denied/Missing" }
 
-    # Secure Boot
     try {
         $secureBoot = Confirm-SecureBootUEFI -ErrorAction SilentlyContinue
-        "Secure Boot: $secureBoot" | Out-File $outFile -Append -Encoding UTF8
-    } catch { "Secure Boot: Unknown/Legacy" | Out-File $outFile -Append -Encoding UTF8 }
+        $secInfo["Secure Boot"] = "$secureBoot"
+    } catch { $secInfo["Secure Boot"] = "Unknown/Legacy" }
+
+    Add-ReportSection "Security Status" $secInfo "KeyValue"
 
     # Storage & BitLocker
-    "`n--- STORAGE & PROTECTION ---" | Out-File $outFile -Append -Encoding UTF8
+    $volList = @()
     $vols = Get-BitLockerVolume -ErrorAction SilentlyContinue
     if ($vols) {
         foreach ($v in $vols) {
-            "Volume $($v.MountPoint): $($v.ProtectionStatus) (Lock: $($v.LockStatus))" | Out-File $outFile -Append -Encoding UTF8
+            $volList += [PSCustomObject]@{
+                MountPoint = $v.MountPoint
+                VolumeStatus = $v.VolumeStatus
+                ProtectionStatus = $v.ProtectionStatus
+                LockStatus = $v.LockStatus
+                EncryptionMethod = $v.EncryptionMethod
+            }
         }
+        Add-ReportSection "BitLocker Status" $volList "Table"
     } else {
-        "BitLocker: Not Active/Supported" | Out-File $outFile -Append -Encoding UTF8
+        Add-ReportSection "BitLocker Status" "BitLocker management is not available or no protected volumes found."
     }
 
-    Write-Log "Gathering Full Diagnostics (systeminfo)..." "Cyan"
-    "`n--- FULL DIAGNOSTICS ---" | Out-File $outFile -Append -Encoding UTF8
-    systeminfo | Out-File $outFile -Append -Encoding UTF8
+    # Network Adapters
+    $netAdapters = Get-NetAdapter -Physical | Select-Object Name, InterfaceDescription, Status, MacAddress, LinkSpeed
+    Add-ReportSection "Network Adapters" $netAdapters "Table"
+
+    # Services
+    $services = Get-Service | Where-Object {$_.Status -eq 'Running'} | Select-Object Name, DisplayName, StartType | Sort-Object Name
+    # Limiting for brevity in HTML if too long, but let's include all running
+    Add-ReportSection "Running Services" $services "Table"
+
+    # Export
+    $outFile = "$env:USERPROFILE\Desktop\SystemSpec_$(Get-Date -Format 'yyyyMMdd_HHmm').html"
+    Export-Report-Html $outFile
 
     Show-Success "Detailed system info exported to $outFile"
     Invoke-Item $outFile

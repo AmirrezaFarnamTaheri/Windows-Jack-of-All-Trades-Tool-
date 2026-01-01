@@ -362,7 +362,10 @@ namespace SystemMaintenance
         {
             currentCategory = category;
 
+            // Use SuspendLayout to prevent flickering during heavy UI updates
+            this.SuspendLayout();
             scriptsPanel.SuspendLayout();
+
             // Just remove controls from view, do not dispose cached cards!
             scriptsPanel.Controls.Clear();
 
@@ -393,50 +396,74 @@ namespace SystemMaintenance
             }
 
             ChkBatchMode_CheckedChanged(null, null); // Re-apply batch visibility
-            scriptsPanel.ResumeLayout();
+            scriptsPanel.ResumeLayout(true);
+            this.ResumeLayout(true);
         }
 
         private void RenderDashboard()
         {
+            // Re-create dashboard panel if missing or if we want to ensure fresh layout
             if (dashboardPanel == null) {
-                dashboardPanel = new Panel { Width = Math.Max(100, scriptsPanel.Width - 40), AutoSize = true };
+                dashboardPanel = new Panel { Width = Math.Max(100, scriptsPanel.Width - 40), AutoSize = true, Padding = new Padding(0,0,0,20) };
 
-                Label lblHeader = new Label { Text = "System Overview", Font = new Font("Segoe UI", 16F, FontStyle.Bold), AutoSize = true, Location = new Point(0, 0), ForeColor = isDarkMode ? colTextDark : colTextLight, Tag = "THEMEABLE" };
+                // Header Section
+                Label lblHeader = new Label { Text = "System Dashboard", Font = new Font("Segoe UI", 20F, FontStyle.Light), AutoSize = true, Location = new Point(0, 0), ForeColor = isDarkMode ? colTextDark : colTextLight, Tag = "THEMEABLE" };
                 dashboardPanel.Controls.Add(lblHeader);
+
+                Button btnRefresh = new Button { Text = "↻ Refresh Stats", Size = new Size(120, 30), Location = new Point(dashboardPanel.Width - 130, 10), FlatStyle = FlatStyle.Flat, BackColor = colAccent, ForeColor = Color.White };
+                btnRefresh.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+
+                dashboardPanel.Controls.Add(btnRefresh);
 
                 // System Info Card
                 Panel infoCard = new Panel {
-                    Location = new Point(0, 40),
-                    Size = new Size(dashboardPanel.Width, 150),
+                    Location = new Point(0, 50),
+                    Size = new Size(dashboardPanel.Width, 220), // Slightly taller for more info
                     BackColor = isDarkMode ? colCardDark : colCardLight,
                     Tag = "THEMEABLE_CARD"
                 };
+
                 Label lblInfo = new Label {
-                    Text = GetDetailedSystemInfo(),
+                    Text = "Loading system information...",
                     Font = new Font("Consolas", 10F),
                     AutoSize = true,
-                    Location = new Point(10, 10),
-                    ForeColor = isDarkMode ? colTextDark : colTextLight, // Better contrast in card
+                    Location = new Point(20, 20),
+                    ForeColor = isDarkMode ? colTextDark : colTextLight,
                     Tag = "THEMEABLE"
                 };
                 infoCard.Controls.Add(lblInfo);
                 dashboardPanel.Controls.Add(infoCard);
 
-                Label lblQuick = new Label { Text = "Quick Actions", Font = new Font("Segoe UI", 14F, FontStyle.Bold), AutoSize = true, Location = new Point(0, infoCard.Bottom + 20), ForeColor = isDarkMode ? colTextDark : colTextLight, Tag = "THEMEABLE" };
+                // Wire up refresh
+                btnRefresh.Click += async (s, e) => {
+                     btnRefresh.Enabled = false;
+                     lblInfo.Text = "Refreshing system stats...";
 
-                Button btnRefresh = new Button { Text = "↻", Size = new Size(30, 30), Location = new Point(150, infoCard.Bottom + 15), FlatStyle = FlatStyle.Flat, BackColor = Color.Transparent, ForeColor = colAccent };
-                btnRefresh.Click += (s, e) => {
-                     // Refresh Info
-                     lblInfo.Text = GetDetailedSystemInfo();
+                     string stats = await Task.Run(() => GetDetailedSystemInfo());
+
+                     if (!dashboardPanel.IsDisposed && lblInfo.IsHandleCreated) {
+                        lblInfo.Text = stats;
+                     }
+                     btnRefresh.Enabled = true;
                 };
-                dashboardPanel.Controls.Add(btnRefresh);
+
+                // Initial Load (Async)
+                Task.Run(() => {
+                    string stats = GetDetailedSystemInfo();
+                    if (!dashboardPanel.IsDisposed && lblInfo.IsHandleCreated) {
+                        lblInfo.Invoke((Action)(() => lblInfo.Text = stats));
+                    }
+                });
+
+                // Quick Actions Section
+                Label lblQuick = new Label { Text = "Quick Maintenance", Font = new Font("Segoe UI", 14F, FontStyle.Regular), AutoSize = true, Location = new Point(0, infoCard.Bottom + 25), ForeColor = isDarkMode ? colTextDark : colTextLight, Tag = "THEMEABLE" };
                 dashboardPanel.Controls.Add(lblQuick);
 
-                FlowLayoutPanel quickFlow = new FlowLayoutPanel { Location = new Point(0, lblQuick.Bottom + 10), Width = dashboardPanel.Width, Height = 200, AutoScroll = false, Tag = "QUICK_FLOW" };
+                FlowLayoutPanel quickFlow = new FlowLayoutPanel { Location = new Point(0, lblQuick.Bottom + 15), Width = dashboardPanel.Width, Height = 180, AutoScroll = false, Tag = "QUICK_FLOW" };
 
-                string[] quickScripts = { "2_InstallCleaningTools.ps1", "9_DiskHealthCheck.ps1", "1_CreateRestorePoint.ps1", "6_OptimizeAndUpdate.ps1" };
+                // Added a few more useful quick actions
+                string[] quickScripts = { "70_DetailedSysInfo.ps1", "2_InstallCleaningTools.ps1", "1_CreateRestorePoint.ps1", "9_DiskHealthCheck.ps1" };
                 foreach(var s in quickScripts) {
-                    // Find script
                     ScriptInfo info = null;
                     foreach(var list in categories.Values) {
                         info = list.FirstOrDefault(x => x.FileName == s);
@@ -446,13 +473,14 @@ namespace SystemMaintenance
                 }
                 dashboardPanel.Controls.Add(quickFlow);
             }
-            // Update size just in case, ensuring safe value
-            if (scriptsPanel.Width > 40) dashboardPanel.Width = scriptsPanel.Width - 40;
 
-            // Ensure Quick Actions have current parent width
-            foreach(Control c in dashboardPanel.Controls) {
-                if (c is FlowLayoutPanel && c.Tag != null && c.Tag.ToString() == "QUICK_FLOW") {
-                    c.Width = dashboardPanel.Width;
+            // Layout Updates
+            if (scriptsPanel.Width > 40) {
+                dashboardPanel.Width = scriptsPanel.Width - 40;
+                // Update internal widths
+                foreach(Control c in dashboardPanel.Controls) {
+                    if (c.Tag != null && c.Tag.ToString() == "THEMEABLE_CARD") c.Width = dashboardPanel.Width;
+                    if (c.Tag != null && c.Tag.ToString() == "QUICK_FLOW") c.Width = dashboardPanel.Width;
                 }
             }
 
@@ -993,18 +1021,21 @@ namespace SystemMaintenance
         private string GetDetailedSystemInfo()
         {
             StringBuilder sb = new StringBuilder();
-            sb.AppendLine("OS: " + GetOSFriendlyName());
-            sb.AppendLine("Machine: " + Environment.MachineName);
-            sb.AppendLine("User: " + Environment.UserName);
-            sb.AppendLine("Uptime: " + GetUptime());
+            sb.AppendLine("   OS:       " + GetOSFriendlyName());
+            sb.AppendLine("   Machine:  " + Environment.MachineName);
+            sb.AppendLine("   User:     " + Environment.UserName);
+            sb.AppendLine("   Uptime:   " + GetUptime());
 
             try {
                 using (var searcher = new ManagementObjectSearcher("SELECT Name, NumberOfCores, NumberOfLogicalProcessors FROM Win32_Processor"))
                 {
                     foreach (var item in searcher.Get())
                     {
-                        sb.AppendLine("CPU: " + item["Name"].ToString());
-                        sb.AppendLine(string.Format("Cores: {0} | Threads: {1}", item["NumberOfCores"], item["NumberOfLogicalProcessors"]));
+                        string cpu = item["Name"].ToString();
+                        // Truncate CPU name if too long for cleaner display
+                        if (cpu.Length > 40) cpu = cpu.Substring(0, 37) + "...";
+                        sb.AppendLine("   CPU:      " + cpu);
+                        sb.AppendLine(string.Format("   Cores:    {0} | Threads: {1}", item["NumberOfCores"], item["NumberOfLogicalProcessors"]));
                     }
                 }
 
@@ -1013,7 +1044,7 @@ namespace SystemMaintenance
                     {
                         foreach (var item in searcher.Get())
                         {
-                            sb.AppendLine("GPU: " + item["Name"].ToString());
+                            sb.AppendLine("   GPU:      " + item["Name"].ToString());
                         }
                     }
                 } catch {}
@@ -1025,7 +1056,7 @@ namespace SystemMaintenance
                         long totalRam = Convert.ToInt64(item["TotalVisibleMemorySize"]) / 1024;
                         long freeRam = Convert.ToInt64(item["FreePhysicalMemory"]) / 1024;
                         double percentFree = (double)freeRam / totalRam * 100;
-                        sb.AppendLine(string.Format("RAM: {0} MB Free / {1} MB Total ({2:F1}% Free)", freeRam, totalRam, percentFree));
+                        sb.AppendLine(string.Format("   RAM:      {0} MB Free / {1} MB Total ({2:F1}% Free)", freeRam, totalRam, percentFree));
                     }
                 }
 
@@ -1034,15 +1065,15 @@ namespace SystemMaintenance
                 try { using (var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending")) { if (key != null) reboot = true; } } catch {}
                 try { using (var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired")) { if (key != null) reboot = true; } } catch {}
 
-                if (reboot) sb.AppendLine("STATUS: Pending Reboot (!)");
+                if (reboot) sb.AppendLine("   STATUS:   Pending Reboot (!)");
 
-                sb.AppendLine("--------------------------------------------------");
+                sb.AppendLine("   --------------------------------------------------");
                 foreach (var drive in DriveInfo.GetDrives()) {
                     if (drive.IsReady && drive.DriveType == DriveType.Fixed) {
                         long freeGb = drive.TotalFreeSpace / 1073741824;
                         long totalGb = drive.TotalSize / 1073741824;
                         double percentFree = (double)drive.TotalFreeSpace / drive.TotalSize * 100;
-                        sb.AppendLine(string.Format("Disk ({0}): {1} GB Free / {2} GB Total ({3:F1}% Free)", drive.Name, freeGb, totalGb, percentFree));
+                        sb.AppendLine(string.Format("   Disk ({0}): {1} GB Free / {2} GB Total ({3:F1}% Free)", drive.Name, freeGb, totalGb, percentFree));
                     }
                 }
             } catch (Exception ex) {

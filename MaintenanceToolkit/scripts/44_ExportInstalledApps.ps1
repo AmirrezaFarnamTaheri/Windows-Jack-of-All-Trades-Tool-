@@ -3,20 +3,30 @@ Assert-Admin
 Write-Header "Exporting Installed Apps"
 Get-SystemSummary
 
-$out = "$env:USERPROFILE\Desktop\InstalledApps_$(Get-Date -Format 'yyyyMMdd').csv"
+$outHtml = "$env:USERPROFILE\Desktop\InstalledApps_$(Get-Date -Format 'yyyyMMdd_HHmm').html"
 
 try {
     Write-Section "Gathering Data"
-    Write-Log "Gathering App List (Registry + Winget)..." "Cyan"
+    Write-Log "Gathering App List (Registry)..." "Cyan"
 
     # Basic Reg Method
-    $apps = Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\* | Select-Object DisplayName, DisplayVersion, Publisher, InstallDate
-    $apps += Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* | Select-Object DisplayName, DisplayVersion, Publisher, InstallDate
+    $apps = @()
+    $keys = "HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*", "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*"
 
-    Write-Section "Exporting"
-    $apps | Where-Object { $_.DisplayName } | Export-Csv -Path $out -NoTypeInformation -Encoding UTF8
+    foreach ($k in $keys) {
+        $apps += Get-ItemProperty $k -ErrorAction SilentlyContinue | Select-Object DisplayName, DisplayVersion, Publisher, InstallDate
+    }
 
-    Show-Success "List exported to: $out"
+    # Filter and Sort
+    $cleanApps = $apps | Where-Object { $_.DisplayName } | Sort-Object DisplayName | Select-Object DisplayName, DisplayVersion, Publisher, InstallDate
+
+    New-Report "Installed Applications Inventory"
+    Add-ReportSection "Installed Applications ($($cleanApps.Count))" $cleanApps "Table"
+
+    Export-Report-Html $outHtml
+    Show-Success "List exported to: $outHtml"
+    Invoke-Item $outHtml
+
 } catch {
     Show-Error "Error: $($_.Exception.Message)"
 }
