@@ -5,29 +5,55 @@ Get-SystemSummary
 
 try {
     Write-Section "Scan Results"
+
     $disks = Get-PhysicalDisk | Sort-Object DeviceId
+    $diskReport = @()
+
     foreach ($disk in $disks) {
         $status = $disk.HealthStatus
         $media = $disk.MediaType
         $bus = $disk.BusType
-        $color = if ($status -eq "Healthy") { "Green" } else { "Red" }
 
-        Write-Log "----------------------------------------" "White"
-        Write-Log "Disk $($disk.DeviceId): $($disk.FriendlyName)" "Cyan"
-        Write-Log "Type: $media ($bus)" "Gray"
-        Write-Log "Health Status: $status" $color
+        # Color logic for HTML
+        $statusHtml = $status
+        if ($status -eq "Healthy") { $statusHtml = "<span class='status-pass'>Healthy</span>" }
+        else { $statusHtml = "<span class='status-fail'>$status</span>" }
+
+        $wear = "N/A"
+        $temp = "N/A"
 
         # Try to get wear indicators for SSDs
         if ($media -eq "SSD") {
              $counters = Get-StorageReliabilityCounter -PhysicalDisk $disk -ErrorAction SilentlyContinue
              if ($counters) {
-                 $wear = $counters.Wear
-                 if ($wear) { Write-Log "Wear Level: $wear%" "White" }
-                 $temp = $counters.Temperature
-                 if ($temp) { Write-Log "Temperature: $temp C" "White" }
+                 if ($counters.Wear) { $wear = "$($counters.Wear)%" }
+                 if ($counters.Temperature) { $temp = "$($counters.Temperature) C" }
              }
         }
+
+        $diskReport += [PSCustomObject]@{
+            ID = $disk.DeviceId
+            Name = $disk.FriendlyName
+            Type = "$media ($bus)"
+            Health = $statusHtml
+            "SSD Wear" = $wear
+            Temp = $temp
+            Size = Format-Size $disk.Size
+        }
+
+        # Console output as well for immediate feedback
+        Write-Log "Disk $($disk.DeviceId): $($disk.FriendlyName) - $status" "White"
     }
+
+    New-Report "Disk Health Report (S.M.A.R.T.)"
+    Add-ReportSection "Physical Disks" $diskReport "Table"
+
+    $outHtml = "$env:USERPROFILE\Desktop\DiskHealth_$(Get-Date -Format 'yyyyMMdd_HHmm').html"
+    Export-Report-Html $outHtml
+
+    Show-Success "Full report exported to $outHtml"
+    Invoke-Item $outHtml
+
 } catch {
     Show-Error "Error: $($_.Exception.Message)"
 }
