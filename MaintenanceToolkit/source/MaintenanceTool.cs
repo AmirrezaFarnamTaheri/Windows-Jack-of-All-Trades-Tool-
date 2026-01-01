@@ -58,6 +58,7 @@ namespace SystemMaintenance
         private object processLock = new object();
         private const string SETTINGS_FILE = "settings.cfg";
         private CancellationTokenSource batchCts;
+        private string tempScriptDir = null;
 
         // Colors (Modern Flat Theme)
         private Color colSidebarDark = Color.FromArgb(37, 37, 38);
@@ -105,6 +106,12 @@ namespace SystemMaintenance
                 card.Dispose();
             }
             scriptCardCache.Clear();
+
+            // Cleanup temporary script directory
+            if (tempScriptDir != null && Directory.Exists(tempScriptDir))
+            {
+                try { Directory.Delete(tempScriptDir, true); } catch { }
+            }
         }
 
         private void InitializeLayout()
@@ -500,22 +507,67 @@ namespace SystemMaintenance
             });
         }
 
+        private void ExtractEmbeddedScripts()
+        {
+            if (tempScriptDir != null) return;
+
+            try {
+                tempScriptDir = Path.Combine(Path.GetTempPath(), "SysMaintToolkit_" + Guid.NewGuid().ToString("N").Substring(0, 8));
+                Directory.CreateDirectory(tempScriptDir);
+
+                var assembly = System.Reflection.Assembly.GetExecutingAssembly();
+                foreach (string resourceName in assembly.GetManifestResourceNames())
+                {
+                    if (resourceName.StartsWith("scripts/"))
+                    {
+                        // Resource name is like "scripts/lib/Common.ps1"
+                        // We map this to tempScriptDir/lib/Common.ps1
+                        // Note: fileName in resource is forward slash separated as we defined in BuildTool
+
+                        string relPath = resourceName.Substring("scripts/".Length);
+                        string fullPath = Path.Combine(tempScriptDir, relPath.Replace("/", Path.DirectorySeparatorChar.ToString()));
+
+                        string dir = Path.GetDirectoryName(fullPath);
+                        if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+
+                        using (Stream stream = assembly.GetManifestResourceStream(resourceName))
+                        using (FileStream fileStream = new FileStream(fullPath, FileMode.Create))
+                        {
+                            stream.CopyTo(fileStream);
+                        }
+                    }
+                }
+            } catch (Exception ex) {
+                Invoke((Action)(() => Log("Error extracting embedded scripts: " + ex.Message)));
+            }
+        }
+
         private string FindScriptPath(string fileName)
         {
             string baseDir = AppDomain.CurrentDomain.BaseDirectory;
-            // Search order: scripts/, MaintenanceToolkit/scripts/, ../scripts/, ../../scripts/, ./
-            string[] searchPaths = new string[] {
+
+            // Priority 1: Local scripts folder (Development / portable extraction)
+            // Search order: scripts/, MaintenanceToolkit/scripts/, ../scripts/, ../../scripts/
+            string[] localPaths = new string[] {
                 Path.Combine(baseDir, "scripts", fileName),
                 Path.Combine(baseDir, "MaintenanceToolkit", "scripts", fileName),
                 Path.Combine(baseDir, "..", "scripts", fileName),
-                Path.Combine(baseDir, "..", "..", "scripts", fileName),
-                Path.Combine(baseDir, fileName)
+                Path.Combine(baseDir, "..", "..", "scripts", fileName)
             };
 
-            foreach (string p in searchPaths)
+            foreach (string p in localPaths)
             {
                 if (File.Exists(p)) return p;
             }
+
+            // Priority 2: Embedded Scripts (Standalone EXE)
+            ExtractEmbeddedScripts();
+            if (tempScriptDir != null)
+            {
+                string tempPath = Path.Combine(tempScriptDir, fileName);
+                if (File.Exists(tempPath)) return tempPath;
+            }
+
             return null;
         }
 

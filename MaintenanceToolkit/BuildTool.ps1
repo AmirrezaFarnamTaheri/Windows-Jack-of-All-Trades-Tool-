@@ -23,9 +23,23 @@ if (-not $CSC) {
 
 Write-Host "Using Compiler: $($CSC.FullName)" -ForegroundColor DarkGray
 
+# Collect Embedded Resources (Scripts)
+$ResourceFlags = ""
+$ScriptDir = Join-Path $PSScriptRoot "scripts"
+if (Test-Path $ScriptDir) {
+    Get-ChildItem -Path $ScriptDir -Recurse -File | ForEach-Object {
+        # Calculate relative path (e.g. scripts/lib/Common.ps1)
+        # We need to preserve the folder structure in the resource name
+        $RelPath = $_.FullName.Substring($ScriptDir.Length + 1).Replace("\", "/")
+        $ResName = "scripts/$RelPath"
+        $ResourceFlags += " /resource:`"$($_.FullName)`",`"$ResName`""
+        Write-Host "Embedding: $ResName" -ForegroundColor Gray
+    }
+}
+
 # Compile Command
 # We link Windows Forms, Drawing, System.Management (for WMI checks), and the Manifest
-$BuildCmd = "& '$($CSC.FullName)' /target:winexe /out:'$OutputFile' /win32manifest:'$ManifestFile' /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Management.dll '$SourceFile'"
+$BuildCmd = "& '$($CSC.FullName)' /target:winexe /out:'$OutputFile' /win32manifest:'$ManifestFile' /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Management.dll $ResourceFlags '$SourceFile'"
 
 Invoke-Expression $BuildCmd
 
