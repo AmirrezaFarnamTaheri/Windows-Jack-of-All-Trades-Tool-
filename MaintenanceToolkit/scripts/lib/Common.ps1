@@ -32,6 +32,10 @@ function Show-Error ($Message) {
     Write-Log "[ERROR] $Message" "Red"
 }
 
+function Show-Warning ($Message) {
+    Write-Log "[WARNING] $Message" "Yellow"
+}
+
 function Get-SystemSummary {
     $os = Get-CimInstance Win32_OperatingSystem
     $cpu = Get-CimInstance Win32_Processor

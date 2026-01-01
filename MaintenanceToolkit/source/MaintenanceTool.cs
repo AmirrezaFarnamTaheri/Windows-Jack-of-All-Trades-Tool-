@@ -1094,6 +1094,7 @@ namespace SystemMaintenance
             // NETWORK
             categories["NETWORK"].Add(new ScriptInfo("7_NetworkReset.ps1", "Network Reset", "Flushes DNS and resets IP/Winsock."));
             categories["NETWORK"].Add(new ScriptInfo("19_GetWifiPasswords.ps1", "Show Wi-Fi Passwords", "Decrypts saved Wi-Fi passwords."));
+            categories["NETWORK"].Add(new ScriptInfo("83_NetworkSpeedTest.ps1", "Network Speed Test", "Measures download speed (100MB test)."));
             categories["NETWORK"].Add(new ScriptInfo("20_DnsBenchmark.ps1", "DNS Benchmark", "Tests speed of DNS providers."));
             categories["NETWORK"].Add(new ScriptInfo("30_LocalPortScan.ps1", "Local Port Scanner", "Scans for open listening ports."));
             categories["NETWORK"].Add(new ScriptInfo("47_NetworkHeartbeat.ps1", "Network Heartbeat", "Monitors ping and packet loss.", true));
@@ -1122,6 +1123,7 @@ namespace SystemMaintenance
             categories["UTILS"].Add(new ScriptInfo("74_WindowsUpdateHistory.ps1", "Update History", "Lists recent Windows Updates.", true));
             categories["UTILS"].Add(new ScriptInfo("15_ClearEventLogs.ps1", "Clear Event Logs", "Clears all Windows Event Logs."));
             categories["UTILS"].Add(new ScriptInfo("23_FindLargeFiles.ps1", "Find Large Files", "Scans user profile for large files."));
+            categories["UTILS"].Add(new ScriptInfo("81_AnalyzeDiskUsage.ps1", "Analyze Disk Usage", "Lists top 20 largest folders in a path."));
             categories["UTILS"].Add(new ScriptInfo("26_ClearClipboard.ps1", "Clear Clipboard", "Wipes clipboard history."));
             categories["UTILS"].Add(new ScriptInfo("77_ResetWindowsSearch.ps1", "Reset Search Index", "Rebuilds Windows Search database."));
             categories["UTILS"].Add(new ScriptInfo("27_CheckStability.ps1", "Check Stability", "Checks for recent crashes/BSODs."));
@@ -1140,6 +1142,7 @@ namespace SystemMaintenance
             categories["UTILS"].Add(new ScriptInfo("61_CheckActivation.ps1", "Check Activation", "Checks license expiry."));
             categories["UTILS"].Add(new ScriptInfo("63_InstallEssentials.ps1", "Install Essentials", "Installs Chrome, VLC, 7Zip, etc."));
             categories["UTILS"].Add(new ScriptInfo("70_DetailedSysInfo.ps1", "Export System Spec", "Dumps full system info to a text file."));
+            categories["UTILS"].Add(new ScriptInfo("82_ExportSystemLogs.ps1", "Export Event Logs", "Saves System/App logs to EVTX files."));
 
             // Populate Favorites
             foreach(var kvp in categories) {
