@@ -32,18 +32,46 @@ function Show-Error ($Message) {
     Write-Log "[ERROR] $Message" "Red"
 }
 
+function Show-Warning ($Message) {
+    Write-Log "[WARNING] $Message" "Yellow"
+}
+
+function Show-Info ($Message) {
+    Write-Log "[INFO] $Message" "Cyan"
+}
+
+function Write-Diagnostic ($Message) {
+    if ($Global:VerbosePreference -eq 'Continue' -or $env:MAINTENANCE_DIAG -eq '1') {
+        Write-Log "[DIAG] $Message" "DarkGray"
+    }
+}
+
 function Get-SystemSummary {
-    $os = Get-CimInstance Win32_OperatingSystem
-    $cpu = Get-CimInstance Win32_Processor
+    try {
+        $os = Get-CimInstance Win32_OperatingSystem -ErrorAction Stop
+        $cpu = Get-CimInstance Win32_Processor -ErrorAction Stop
 
-    # Disk Space (C:)
-    $drive = Get-PSDrive C -ErrorAction SilentlyContinue
-    $freeGB = "N/A"
-    if ($drive) { $freeGB = "$([math]::Round($drive.Free/1GB, 1)) GB" }
+        # Uptime
+        $boot = $os.LastBootUpTime
+        $uptime = (Get-Date) - $boot
+        $uptimeStr = "{0}d {1}h {2}m" -f $uptime.Days, $uptime.Hours, $uptime.Minutes
 
-    Write-Log "OS: $($os.Caption)" "Gray"
-    Write-Log "CPU: $($cpu.Name)" "Gray"
-    Write-Log "Free RAM: $([math]::Round($os.FreePhysicalMemory/1024,0)) MB  |  Free Disk (C:): $freeGB" "Gray"
+        # Disk Space (C:)
+        $drive = Get-PSDrive C -ErrorAction SilentlyContinue
+        $freeGB = "N/A"
+        if ($drive) { $freeGB = "$([math]::Round($drive.Free/1GB, 1)) GB" }
+
+        Write-Log "------------------------------------------------------" "DarkGray"
+        Write-Log "OS: $($os.Caption) ($($os.OSArchitecture))" "Gray"
+        Write-Log "Build: $($os.BuildNumber)" "Gray"
+        Write-Log "Uptime: $uptimeStr" "Gray"
+        Write-Log "CPU: $($cpu.Name)" "Gray"
+        Write-Log "RAM: $([math]::Round($os.FreePhysicalMemory/1024,0)) MB Free / $([math]::Round($os.TotalVisibleMemorySize/1024,0)) MB Total" "Gray"
+        Write-Log "Disk (C:): $freeGB Free" "Gray"
+        Write-Log "------------------------------------------------------" "DarkGray"
+    } catch {
+        Write-Log "System Summary Unavailable: $($_.Exception.Message)" "Red"
+    }
 }
 
 function Pause-If-Interactive {

@@ -42,6 +42,7 @@ namespace SystemMaintenance
 
         // Batch Mode Controls
         private CheckBox chkBatchMode;
+        private CheckBox chkVerbose;
         private Button btnRunBatch;
         private Button btnSelectAll;
         private Button btnSelectNone;
@@ -233,6 +234,13 @@ namespace SystemMaintenance
             chkBatchMode = new CheckBox { Text = "Batch Mode", Dock = DockStyle.Left, Width = 100, Appearance = Appearance.Button, TextAlign = ContentAlignment.MiddleCenter, FlatStyle = FlatStyle.Flat };
             chkBatchMode.CheckedChanged += ChkBatchMode_CheckedChanged;
 
+            // Verbose Control
+            chkVerbose = new CheckBox { Text = "Verbose", Dock = DockStyle.Left, Width = 80, Appearance = Appearance.Button, TextAlign = ContentAlignment.MiddleCenter, FlatStyle = FlatStyle.Flat };
+            chkVerbose.CheckedChanged += (s,e) => {
+                chkVerbose.BackColor = chkVerbose.Checked ? colAccent : Color.Transparent;
+                chkVerbose.ForeColor = chkVerbose.Checked ? Color.White : (isDarkMode ? colTextDark : colTextLight);
+            };
+
             btnSelectAll = new Button { Text = "All", Dock = DockStyle.Left, Width = 50, FlatStyle = FlatStyle.Flat, Visible = false };
             btnSelectAll.Click += (s, e) => SetAllBatchSelection(true);
             btnSelectNone = new Button { Text = "None", Dock = DockStyle.Left, Width = 50, FlatStyle = FlatStyle.Flat, Visible = false };
@@ -244,6 +252,7 @@ namespace SystemMaintenance
             contentHeader.Controls.Add(btnRunBatch);
             contentHeader.Controls.Add(btnSelectNone);
             contentHeader.Controls.Add(btnSelectAll);
+            contentHeader.Controls.Add(chkVerbose);
             contentHeader.Controls.Add(chkBatchMode);
 
             contentPanel.Controls.Add(contentHeader);
@@ -261,10 +270,15 @@ namespace SystemMaintenance
             Label lblLog = new Label { Text = "System Log", Dock = DockStyle.Left, Font = new Font("Segoe UI", 9F, FontStyle.Bold), Padding = new Padding(5) };
             btnCancel = new Button { Text = "CANCEL PROCESS", Dock = DockStyle.Right, Width = 120, BackColor = Color.IndianRed, ForeColor = Color.White, FlatStyle = FlatStyle.Flat, Visible = false };
             btnCancel.Click += BtnCancel_Click;
-            Button btnSaveLog = new Button { Text = "Save Log", Dock = DockStyle.Right, Width = 80, FlatStyle = FlatStyle.Flat };
+
+            Button btnCopyLog = new Button { Text = "Copy", Dock = DockStyle.Right, Width = 60, FlatStyle = FlatStyle.Flat };
+            btnCopyLog.Click += (s,e) => { if (!string.IsNullOrEmpty(txtLog.Text)) Clipboard.SetText(txtLog.Text); };
+
+            Button btnSaveLog = new Button { Text = "Save", Dock = DockStyle.Right, Width = 60, FlatStyle = FlatStyle.Flat };
             btnSaveLog.Click += (s,e) => SaveLogToFile();
 
             logHeader.Controls.Add(btnCancel);
+            logHeader.Controls.Add(btnCopyLog);
             logHeader.Controls.Add(btnSaveLog);
             logHeader.Controls.Add(lblLog);
 
@@ -716,8 +730,10 @@ namespace SystemMaintenance
             }
 
             try {
-                ProcessStartInfo psi = new ProcessStartInfo("powershell.exe",
-                    string.Format("-NoProfile -ExecutionPolicy Bypass {0} -File \"{1}\"", script.IsInteractive ? "-NoExit" : "-NonInteractive", path));
+                string args = string.Format("-NoProfile -ExecutionPolicy Bypass {0} -File \"{1}\"", script.IsInteractive ? "-NoExit" : "-NonInteractive", path);
+                if (chkVerbose.Checked) args += " -Verbose";
+
+                ProcessStartInfo psi = new ProcessStartInfo("powershell.exe", args);
 
                 psi.UseShellExecute = script.IsInteractive;
                 psi.CreateNoWindow = !script.IsInteractive;
@@ -905,6 +921,7 @@ namespace SystemMaintenance
             statusStrip.ForeColor = isDarkMode ? Color.White : Color.Black;
 
             chkBatchMode.ForeColor = isBatchMode ? Color.White : fg;
+            chkVerbose.ForeColor = chkVerbose.Checked ? Color.White : fg;
 
             // Update Cached Cards
             foreach(var card in scriptCardCache.Values) {
@@ -1072,6 +1089,7 @@ namespace SystemMaintenance
             categories["HARDWARE"].Add(new ScriptInfo("9_DiskHealthCheck.ps1", "Check Disk Health", "Checks SMART status of drives."));
             categories["HARDWARE"].Add(new ScriptInfo("11_BatteryHealthReport.ps1", "Battery Report", "Generates an HTML battery health report."));
             categories["HARDWARE"].Add(new ScriptInfo("17_BackupDrivers.ps1", "Backup Drivers", "Exports all installed drivers to Desktop."));
+            categories["HARDWARE"].Add(new ScriptInfo("84_DriverVersionAudit.ps1", "Audit Drivers", "Lists third-party drivers."));
             categories["HARDWARE"].Add(new ScriptInfo("22_RemoveGhostDevices.ps1", "Remove Ghost Devices", "Helps remove unused hidden devices."));
             categories["HARDWARE"].Add(new ScriptInfo("34_KeyTester.ps1", "Keyboard Tester", "Displays raw key input codes.", true));
             categories["HARDWARE"].Add(new ScriptInfo("37_PixelFixer.ps1", "Dead Pixel Fixer", "Flashes colors to unstuck pixels.", true));
