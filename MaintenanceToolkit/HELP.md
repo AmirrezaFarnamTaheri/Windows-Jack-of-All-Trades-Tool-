@@ -34,6 +34,25 @@ Use the search bar (Shortcut: `Ctrl+F`) to instantly filter scripts by name or d
 
 ---
 
+## 🌟 Best Practices for Routine Maintenance
+To keep your system running optimally, consider this schedule:
+
+### Weekly
+1.  **Dashboard Check:** Look for "Pending Reboot" flags or low disk space.
+2.  **Clean:** Run *Deep Disk Cleanup* and *Clear Browser Cache*.
+3.  **Update:** Run *Update All Software* (Winget) and check *Windows Update History*.
+
+### Monthly
+1.  **Health Check:** Run *Disk Health Check* and *Battery Report*.
+2.  **Security:** Review *Startup Manager* and *Audit Scheduled Tasks* for unwanted persistence.
+3.  **Repair:** Run *System Repair (SFC/DISM)* to ensure OS integrity.
+
+### Quarterly / As Needed
+1.  **Privacy:** Run *Privacy Hardening* after major Windows feature updates.
+2.  **Backup:** Run *Backup Drivers* and *Export Installed Apps* for documentation.
+
+---
+
 ## 📂 Script Categories
 
 ### 1. 🧹 CLEAN

@@ -9,22 +9,37 @@ try {
     $metrics = Get-CimInstance Win32_ReliabilityStabilityMetrics -ErrorAction SilentlyContinue | Sort-Object TimeGenerated -Descending | Select-Object -First 30
 
     if ($metrics) {
+        New-Report "System Stability Index"
+
         $latest = $metrics[0]
         $score = $latest.SystemStabilityIndex
 
-        $color = if ($score -ge 8) { "Green" } elseif ($score -ge 5) { "Yellow" } else { "Red" }
+        # Color Logic
+        $scoreHtml = $score
+        if ($score -ge 8) { $scoreHtml = "<span class='status-pass' style='font-size: 2em'>$score / 10</span>" }
+        elseif ($score -ge 5) { $scoreHtml = "<span class='status-warn' style='font-size: 2em'>$score / 10</span>" }
+        else { $scoreHtml = "<span class='status-fail' style='font-size: 2em'>$score / 10</span>" }
 
-        Write-Host "Current Stability Index: " -NoNewline
-        Write-Host "$score / 10" -ForegroundColor $color
+        Add-ReportSection "Current Stability Score" $scoreHtml "RawHtml"
 
-        Write-Log "Date: $($latest.TimeGenerated)" "Gray"
-
-        Write-Section "History (Last 30 Days)"
-        $metrics | ForEach-Object {
-            $bar = "|" * [int]$_.SystemStabilityIndex
-            Write-Host "$($_.TimeGenerated.ToString('MM-dd')): " -NoNewline -ForegroundColor Gray
-            Write-Host "$($_.SystemStabilityIndex) $bar" -ForegroundColor White
+        $history = @()
+        foreach ($m in $metrics) {
+             $history += [PSCustomObject]@{
+                 Date = $m.TimeGenerated
+                 Index = $m.SystemStabilityIndex
+                 # Simple visualization bar
+                 Graph = "|" * [int]$m.SystemStabilityIndex
+             }
         }
+
+        Add-ReportSection "30-Day History" $history "Table"
+
+        $outFile = "$env:USERPROFILE\Desktop\StabilityScore_$(Get-Date -Format 'yyyyMMdd_HHmm').html"
+        Export-Report-Html $outFile
+
+        Show-Success "Stability report saved to $outFile"
+        Invoke-Item $outFile
+
     } else {
         Write-Log "No stability metrics available (RAC task might be disabled)." "Yellow"
     }

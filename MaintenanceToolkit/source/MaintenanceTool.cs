@@ -424,7 +424,7 @@ namespace SystemMaintenance
                 };
 
                 Label lblInfo = new Label {
-                    Text = GetDetailedSystemInfo(),
+                    Text = "Loading system information...",
                     Font = new Font("Consolas", 10F),
                     AutoSize = true,
                     Location = new Point(20, 20),
@@ -435,11 +435,25 @@ namespace SystemMaintenance
                 dashboardPanel.Controls.Add(infoCard);
 
                 // Wire up refresh
-                btnRefresh.Click += (s, e) => {
-                     lblInfo.Text = "Refreshing...";
-                     Application.DoEvents(); // Force UI update
-                     lblInfo.Text = GetDetailedSystemInfo();
+                btnRefresh.Click += async (s, e) => {
+                     btnRefresh.Enabled = false;
+                     lblInfo.Text = "Refreshing system stats...";
+
+                     string stats = await Task.Run(() => GetDetailedSystemInfo());
+
+                     if (!dashboardPanel.IsDisposed && lblInfo.IsHandleCreated) {
+                        lblInfo.Text = stats;
+                     }
+                     btnRefresh.Enabled = true;
                 };
+
+                // Initial Load (Async)
+                Task.Run(() => {
+                    string stats = GetDetailedSystemInfo();
+                    if (!dashboardPanel.IsDisposed && lblInfo.IsHandleCreated) {
+                        lblInfo.Invoke((Action)(() => lblInfo.Text = stats));
+                    }
+                });
 
                 // Quick Actions Section
                 Label lblQuick = new Label { Text = "Quick Maintenance", Font = new Font("Segoe UI", 14F, FontStyle.Regular), AutoSize = true, Location = new Point(0, infoCard.Bottom + 25), ForeColor = isDarkMode ? colTextDark : colTextLight, Tag = "THEMEABLE" };
