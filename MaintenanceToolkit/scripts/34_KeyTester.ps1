@@ -7,7 +7,7 @@ while ($true) {
     if ($Host.UI.RawUI.KeyAvailable) {
         $key = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
         if ($key.VirtualKeyCode -eq 27) { break }
-        Write-Host "Key: $($key.Character)  |  Code: $($key.VirtualKeyCode)" -ForegroundColor Green
+        Write-Log "Key: $($key.Character)  |  Code: $($key.VirtualKeyCode)" "Green"
     }
     Start-Sleep -Milliseconds 50
 }

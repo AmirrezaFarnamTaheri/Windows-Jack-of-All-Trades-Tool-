@@ -55,6 +55,7 @@ namespace SystemMaintenance
             // --- UI Setup ---
             this.Text = "Ultimate System Maintenance Toolkit";
             this.Size = new Size(1200, 850);
+            this.MinimumSize = new Size(800, 600);
             this.StartPosition = FormStartPosition.CenterScreen;
             this.Icon = SystemIcons.Shield;
             this.Font = new Font("Segoe UI", 9F, FontStyle.Regular);
@@ -83,9 +84,16 @@ namespace SystemMaintenance
             GroupBox searchGroup = new GroupBox { Text = "Search Tools", Dock = DockStyle.Top, Height = 50 };
             txtSearch = new TextBox { Dock = DockStyle.Fill, BorderStyle = BorderStyle.None, Font = new Font("Segoe UI", 11F), TabIndex = 0 };
             txtSearch.TextChanged += TxtSearch_TextChanged;
+
+            Button btnClearSearch = new Button { Text = "X", Dock = DockStyle.Right, Width = 25, FlatStyle = FlatStyle.Flat, BackColor = Color.Transparent, ForeColor = Color.Gray };
+            btnClearSearch.FlatAppearance.BorderSize = 0;
+            btnClearSearch.Click += (s, e) => txtSearch.Text = "";
+
             searchGroup.Controls.Add(txtSearch);
+            searchGroup.Controls.Add(btnClearSearch);
+
             txtSearch.Location = new Point(5, 18);
-            txtSearch.Width = 370;
+            txtSearch.Width = 345;
             txtSearch.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top;
 
             // Batch Mode Controls
@@ -440,6 +448,7 @@ namespace SystemMaintenance
 
             // Accessibility
             btn.AccessibleName = script.DisplayName;
+            btn.AccessibleRole = AccessibleRole.PushButton;
             btn.AccessibleDescription = script.Description + (script.IsDestructive ? " Warning: Destructive Action." : "");
 
             // Batch Mode Checkbox
@@ -535,6 +544,7 @@ namespace SystemMaintenance
         private void ChkBatchMode_CheckedChanged(object sender, EventArgs e)
         {
             isBatchMode = chkBatchMode.Checked;
+            chkBatchMode.BackColor = isBatchMode ? (isDarkMode ? Color.FromArgb(100, 149, 237) : Color.LightSkyBlue) : Color.Transparent;
             btnRunBatch.Visible = isBatchMode;
             btnSelectAll.Visible = isBatchMode;
             btnSelectNone.Visible = isBatchMode;
@@ -867,6 +877,8 @@ namespace SystemMaintenance
 
         private void ApplyTheme()
         {
+            if (SystemInformation.HighContrast) return;
+
             Color backColor = isDarkMode ? Color.FromArgb(32, 33, 36) : Color.WhiteSmoke;
             Color foreColor = isDarkMode ? Color.FromArgb(232, 234, 237) : Color.Black;
 

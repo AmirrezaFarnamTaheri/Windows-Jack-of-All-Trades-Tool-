@@ -4,7 +4,7 @@ function Assert-Admin {
     if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]"Administrator")) {
         Write-Host "Error: This script requires Administrator privileges." -ForegroundColor Red
         if (-not [Console]::IsInputRedirected) { Pause }
-        Exit
+        Exit 1
     }
 }
 
