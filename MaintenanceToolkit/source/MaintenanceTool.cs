@@ -26,18 +26,19 @@ namespace SystemMaintenance
         private StatusStrip statusStrip;
         private ToolStripStatusLabel statusLabel;
         private ToolStripProgressBar progressBar;
-        private List<Button> allScriptButtons = new List<Button>();
         private TextBox txtSearch;
-        private Panel descPanel;
-        private Label lblDescTitle;
-        private Label lblDescText;
         private SplitContainer splitContainer;
         private Button btnCancel;
         private Button btnDarkMode;
 
+        // Caches
+        private Dictionary<string, Panel> scriptCardCache = new Dictionary<string, Panel>();
+        private Panel dashboardPanel; // Cached Dashboard
+        private Panel helpPanel;      // Cached Help
+
         // Data
         private Dictionary<string, List<ScriptInfo>> categories = new Dictionary<string, List<ScriptInfo>>();
-        private string currentCategory = "FAVORITES";
+        private string currentCategory = "DASHBOARD";
 
         // Batch Mode Controls
         private CheckBox chkBatchMode;
@@ -58,13 +59,15 @@ namespace SystemMaintenance
         private CancellationTokenSource batchCts;
 
         // Colors (Modern Flat Theme)
-        private Color colSidebarDark = Color.FromArgb(45, 45, 48);
+        private Color colSidebarDark = Color.FromArgb(37, 37, 38);
         private Color colSidebarLight = Color.FromArgb(240, 240, 240);
         private Color colContentDark = Color.FromArgb(30, 30, 30);
         private Color colContentLight = Color.White;
-        private Color colBtnHoverDark = Color.FromArgb(62, 62, 66);
-        private Color colBtnHoverLight = Color.FromArgb(220, 220, 220);
+        private Color colCardDark = Color.FromArgb(45, 45, 48);
+        private Color colCardLight = Color.WhiteSmoke;
         private Color colAccent = Color.FromArgb(0, 122, 204);
+        private Color colTextDark = Color.FromArgb(241, 241, 241);
+        private Color colTextLight = Color.FromArgb(30, 30, 30);
 
         public MainForm()
         {
@@ -73,11 +76,12 @@ namespace SystemMaintenance
 
             // --- UI Setup ---
             this.Text = "Ultimate System Maintenance Toolkit";
-            this.Size = new Size(1200, 850);
-            this.MinimumSize = new Size(900, 650);
+            this.Size = new Size(1100, 750);
+            this.MinimumSize = new Size(900, 600);
             this.StartPosition = FormStartPosition.CenterScreen;
             this.Icon = SystemIcons.Shield;
             this.Font = new Font("Segoe UI", 9F, FontStyle.Regular);
+            this.DoubleBuffered = true;
 
             // Check Admin
             if (!IsAdministrator())
@@ -85,40 +89,35 @@ namespace SystemMaintenance
                 MessageBox.Show("Please restart this application as Administrator for full functionality.", "Admin Rights Needed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
 
-            // --- Root Layout ---
-            sidebarPanel = new Panel { Dock = DockStyle.Left, Width = 220, Padding = new Padding(0) };
-            contentPanel = new Panel { Dock = DockStyle.Fill };
+            InitializeLayout();
+            ApplyTheme();
+            LoadCategory("DASHBOARD");
+        }
 
-            this.Controls.Add(contentPanel);
-            this.Controls.Add(sidebarPanel);
+        private void InitializeLayout()
+        {
+            // Root Container
+            TableLayoutPanel mainLayout = new TableLayoutPanel();
+            mainLayout.Dock = DockStyle.Fill;
+            mainLayout.ColumnCount = 2;
+            mainLayout.RowCount = 1;
+            mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 220F)); // Sidebar
+            mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F)); // Content
+            this.Controls.Add(mainLayout);
 
-            // --- Sidebar Construction ---
-            Panel sidebarHeader = new Panel { Dock = DockStyle.Top, Height = 80, BackColor = Color.Transparent };
-            Button btnMenu = new Button {
-                Text = "≡",
-                Dock = DockStyle.Left,
-                Width = 50,
-                FlatStyle = FlatStyle.Flat,
-                FlatAppearance = { BorderSize = 0 },
-                Font = new Font("Segoe UI", 14F),
-                ForeColor = Color.White
-            };
-            btnMenu.Click += (s,e) => {
-                sidebarPanel.Width = sidebarPanel.Width == 220 ? 60 : 220;
-                foreach(Control c in sidebarPanel.Controls) {
-                    if (c is Button && c.Tag != null) ((Button)c).Text = sidebarPanel.Width == 220 ? c.Tag.ToString() : "";
-                }
-            };
+            // 1. Sidebar
+            sidebarPanel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(0) };
 
+            // Sidebar Header
+            Panel sidebarHeader = new Panel { Dock = DockStyle.Top, Height = 70 };
             Label lblTitle = new Label {
                 Text = "TOOLKIT",
                 Dock = DockStyle.Fill,
                 TextAlign = ContentAlignment.MiddleCenter,
-                Font = new Font("Segoe UI", 12F, FontStyle.Bold),
+                Font = new Font("Segoe UI", 14F, FontStyle.Bold),
                 ForeColor = Color.White
             };
             sidebarHeader.Controls.Add(lblTitle);
-            sidebarHeader.Controls.Add(btnMenu);
             sidebarPanel.Controls.Add(sidebarHeader);
 
             // Categories
@@ -129,104 +128,81 @@ namespace SystemMaintenance
                 sidebarPanel.Controls.Add(btn);
                 sidebarButtons.Add(btn);
             }
+            // Correct Order (Dock Top stacks reversed)
+            sidebarHeader.SendToBack();
 
-            // Fix Sidebar Order (Dock adds to bottom of stack, so first added is bottom visually if we don't handle it)
-            // Actually Dock.Top stacks from top. So first added is top.
-            // We want Header first.
-            sidebarHeader.BringToFront();
-
-            // Sidebar Footer (Theme) - Help moved to category
+            // Sidebar Footer
             Panel sidebarFooter = new Panel { Dock = DockStyle.Bottom, Height = 50 };
-
             btnDarkMode = CreateSidebarButton("TOGGLE THEME");
-            btnDarkMode.Dock = DockStyle.Bottom;
+            btnDarkMode.Dock = DockStyle.Fill;
             btnDarkMode.Click -= SidebarButton_Click;
             btnDarkMode.Click += (s,e) => ToggleTheme();
-
             sidebarFooter.Controls.Add(btnDarkMode);
             sidebarPanel.Controls.Add(sidebarFooter);
 
-            // --- Content Area Construction ---
+            mainLayout.Controls.Add(sidebarPanel, 0, 0);
 
-            // 1. Header (Search + SysInfo)
-            Panel contentHeader = new Panel { Dock = DockStyle.Top, Height = 60, Padding = new Padding(10) };
+            // 2. Content Panel
+            contentPanel = new Panel { Dock = DockStyle.Fill };
+            mainLayout.Controls.Add(contentPanel, 1, 0);
+
+            // Content Header
+            Panel contentHeader = new Panel { Dock = DockStyle.Top, Height = 50, Padding = new Padding(5) };
 
             // Search
-            Panel searchContainer = new Panel { Dock = DockStyle.Right, Width = 300 };
-            txtSearch = new TextBox { Dock = DockStyle.Fill, Font = new Font("Segoe UI", 11F), BorderStyle = BorderStyle.FixedSingle };
+            Panel searchPanel = new Panel { Dock = DockStyle.Right, Width = 250, Padding = new Padding(5) };
+            txtSearch = new TextBox { Dock = DockStyle.Fill, Font = new Font("Segoe UI", 10F) };
             txtSearch.TextChanged += TxtSearch_TextChanged;
-            Button btnClearSearch = new Button { Text = "X", Dock = DockStyle.Right, Width = 30, FlatStyle = FlatStyle.Flat };
-            btnClearSearch.FlatAppearance.BorderSize = 0;
-            btnClearSearch.Click += (s, e) => txtSearch.Text = "";
+            Label lblSearch = new Label { Text = "Search:", Dock = DockStyle.Left, AutoSize = true, TextAlign = ContentAlignment.MiddleRight, Padding = new Padding(0,5,5,0) };
+            searchPanel.Controls.Add(txtSearch);
+            searchPanel.Controls.Add(lblSearch);
 
-            searchContainer.Controls.Add(txtSearch);
-            searchContainer.Controls.Add(btnClearSearch);
-
-            Label lblSearchLabel = new Label { Text = "Search:", Dock = DockStyle.Left, Width = 60, TextAlign = ContentAlignment.MiddleRight };
-            searchContainer.Controls.Add(lblSearchLabel); // Actually logic needs fixing for Dock order
-            // Re-ordering for Dock Right: Add Rightmost first.
-            searchContainer.Controls.Clear();
-            searchContainer.Controls.Add(btnClearSearch);
-            searchContainer.Controls.Add(txtSearch);
-            searchContainer.Controls.Add(lblSearchLabel);
-
-            // Batch Controls in Header
-            chkBatchMode = new CheckBox { Text = "Batch Mode", Dock = DockStyle.Left, Width = 120, Appearance = Appearance.Button, TextAlign = ContentAlignment.MiddleCenter, FlatStyle = FlatStyle.Flat };
+            // Batch Controls
+            chkBatchMode = new CheckBox { Text = "Batch Mode", Dock = DockStyle.Left, Width = 100, Appearance = Appearance.Button, TextAlign = ContentAlignment.MiddleCenter, FlatStyle = FlatStyle.Flat };
             chkBatchMode.CheckedChanged += ChkBatchMode_CheckedChanged;
 
             btnSelectAll = new Button { Text = "All", Dock = DockStyle.Left, Width = 50, FlatStyle = FlatStyle.Flat, Visible = false };
             btnSelectAll.Click += (s, e) => SetAllBatchSelection(true);
-
             btnSelectNone = new Button { Text = "None", Dock = DockStyle.Left, Width = 50, FlatStyle = FlatStyle.Flat, Visible = false };
             btnSelectNone.Click += (s, e) => SetAllBatchSelection(false);
+            btnRunBatch = new Button { Text = "RUN BATCH", Dock = DockStyle.Left, Width = 120, BackColor = colAccent, ForeColor = Color.White, FlatStyle = FlatStyle.Flat, Visible = false, Font = new Font("Segoe UI", 9F, FontStyle.Bold) };
+            btnRunBatch.Click += BtnRunBatch_Click;
 
-            contentHeader.Controls.Add(searchContainer);
+            contentHeader.Controls.Add(searchPanel);
+            contentHeader.Controls.Add(btnRunBatch);
             contentHeader.Controls.Add(btnSelectNone);
             contentHeader.Controls.Add(btnSelectAll);
             contentHeader.Controls.Add(chkBatchMode);
 
-            // 2. Split Container (Scripts + Log)
-            splitContainer = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, SplitterDistance = 450, FixedPanel = FixedPanel.Panel2 };
+            contentPanel.Controls.Add(contentHeader);
 
-            // Scripts Panel
+            // Split Container (Scripts / Logs)
+            splitContainer = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, SplitterDistance = 450 };
+
+            // Script Flow Panel
             scriptsPanel = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoScroll = true, Padding = new Padding(10) };
+            scriptsPanel.Resize += ScriptsPanel_Resize; // Handle resizing for full-width panels
+            splitContainer.Panel1.Controls.Add(scriptsPanel);
 
-            // Description Panel (Bottom of Scripts)
-            descPanel = new Panel { Dock = DockStyle.Bottom, Height = 70, Padding = new Padding(5), BorderStyle = BorderStyle.FixedSingle };
-            lblDescTitle = new Label { Dock = DockStyle.Top, Height = 20, Font = new Font("Segoe UI", 10F, FontStyle.Bold), Text = "Hover over a tool to see details." };
-            lblDescText = new Label { Dock = DockStyle.Fill, Text = "", Font = new Font("Segoe UI", 9F) };
-            btnRunBatch = new Button { Text = "RUN BATCH", Dock = DockStyle.Right, Width = 140, BackColor = colAccent, ForeColor = Color.White, FlatStyle = FlatStyle.Flat, Visible = false, Font = new Font("Segoe UI", 9F, FontStyle.Bold) };
-            btnRunBatch.Click += BtnRunBatch_Click;
-
-            descPanel.Controls.Add(btnRunBatch);
-            descPanel.Controls.Add(lblDescText);
-            descPanel.Controls.Add(lblDescTitle);
-
-            Panel upperContent = new Panel { Dock = DockStyle.Fill };
-            upperContent.Controls.Add(scriptsPanel);
-            upperContent.Controls.Add(descPanel);
-
-            splitContainer.Panel1.Controls.Add(upperContent);
-
-            // Log Area
-            GroupBox grpLog = new GroupBox { Text = "System Log", Dock = DockStyle.Fill, Padding = new Padding(5) };
-            txtLog = new TextBox { Multiline = true, Dock = DockStyle.Fill, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Font = new Font("Consolas", 9F) };
-
-            Panel logTools = new Panel { Dock = DockStyle.Right, Width = 90 };
-            btnCancel = new Button { Text = "CANCEL", Dock = DockStyle.Top, Height = 30, BackColor = Color.IndianRed, ForeColor = Color.White, FlatStyle = FlatStyle.Flat, Visible = false };
+            // Logs
+            Panel logHeader = new Panel { Dock = DockStyle.Top, Height = 30 };
+            Label lblLog = new Label { Text = "System Log", Dock = DockStyle.Left, Font = new Font("Segoe UI", 9F, FontStyle.Bold), Padding = new Padding(5) };
+            btnCancel = new Button { Text = "CANCEL PROCESS", Dock = DockStyle.Right, Width = 120, BackColor = Color.IndianRed, ForeColor = Color.White, FlatStyle = FlatStyle.Flat, Visible = false };
             btnCancel.Click += BtnCancel_Click;
-            Button btnSave = new Button { Text = "Save", Dock = DockStyle.Bottom, Height = 25, FlatStyle = FlatStyle.Flat };
-            btnSave.Click += (s,e) => SaveLogToFile();
+            Button btnSaveLog = new Button { Text = "Save Log", Dock = DockStyle.Right, Width = 80, FlatStyle = FlatStyle.Flat };
+            btnSaveLog.Click += (s,e) => SaveLogToFile();
 
-            logTools.Controls.Add(btnCancel);
-            logTools.Controls.Add(btnSave);
+            logHeader.Controls.Add(btnCancel);
+            logHeader.Controls.Add(btnSaveLog);
+            logHeader.Controls.Add(lblLog);
 
-            grpLog.Controls.Add(txtLog);
-            grpLog.Controls.Add(logTools);
-            splitContainer.Panel2.Controls.Add(grpLog);
+            txtLog = new TextBox { Multiline = true, Dock = DockStyle.Fill, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Font = new Font("Consolas", 9F), BackColor = Color.Black, ForeColor = Color.LightGray };
+
+            splitContainer.Panel2.Controls.Add(txtLog);
+            splitContainer.Panel2.Controls.Add(logHeader);
 
             contentPanel.Controls.Add(splitContainer);
-            contentPanel.Controls.Add(contentHeader);
+            contentHeader.SendToBack(); // Ensure header is at top
 
             // Status Strip
             statusStrip = new StatusStrip();
@@ -235,146 +211,502 @@ namespace SystemMaintenance
             statusStrip.Items.Add(statusLabel);
             statusStrip.Items.Add(progressBar);
             this.Controls.Add(statusStrip);
-
-            // Finalize
-            ApplyTheme();
-            LoadCategory("DASHBOARD"); // Default
         }
 
+        private void ScriptsPanel_Resize(object sender, EventArgs e)
+        {
+            // Responsive width adjustment for full-width panels (Dashboard, Help)
+            // Defensive check for small widths to avoid exceptions
+            if (scriptsPanel.Controls.Count > 0 && scriptsPanel.Width > 40)
+            {
+                foreach(Control c in scriptsPanel.Controls)
+                {
+                    if (c == dashboardPanel || c == helpPanel)
+                    {
+                        c.Width = scriptsPanel.Width - 40;
+                    }
+                }
+            }
+        }
+
+        // --- Layout Helpers ---
         private Button CreateSidebarButton(string text)
         {
             Button btn = new Button();
             btn.Text = text;
             btn.Dock = DockStyle.Top;
-            btn.Height = 50;
+            btn.Height = 45;
             btn.FlatStyle = FlatStyle.Flat;
             btn.FlatAppearance.BorderSize = 0;
             btn.TextAlign = ContentAlignment.MiddleLeft;
-            btn.Padding = new Padding(20, 0, 0, 0);
+            btn.Padding = new Padding(15, 0, 0, 0);
             btn.Font = new Font("Segoe UI", 10F, FontStyle.Regular);
-            btn.Tag = text; // Category name
+            btn.Tag = text;
+            btn.Cursor = Cursors.Hand;
+            btn.AccessibleName = text;
+            btn.AccessibleRole = AccessibleRole.PushButton;
             btn.Click += SidebarButton_Click;
             return btn;
         }
 
+        // --- Core Logic ---
+
         private void SidebarButton_Click(object sender, EventArgs e)
         {
             Button btn = sender as Button;
-            if (btn == null) return;
-            LoadCategory(btn.Tag.ToString());
+            if (btn != null) LoadCategory(btn.Tag.ToString());
         }
 
-        private Dictionary<string, List<Button>> buttonCache = new Dictionary<string, List<Button>>();
+        private Panel GetOrAddCard(ScriptInfo s) {
+            if (!scriptCardCache.ContainsKey(s.FileName)) {
+                scriptCardCache[s.FileName] = CreateScriptCard(s);
+            }
+            return scriptCardCache[s.FileName];
+        }
 
         private void LoadCategory(string category)
         {
             currentCategory = category;
+
             scriptsPanel.SuspendLayout();
+            // Just remove controls from view, do not dispose cached cards!
             scriptsPanel.Controls.Clear();
 
-            // We use allScriptButtons to track the *visible* buttons for search and batch actions in current view
-            allScriptButtons.Clear();
-
-            // Highlight Sidebar Button
+            // Update Sidebar UI
             foreach(var b in sidebarButtons) {
-                b.Font = new Font("Segoe UI", 10F, (string)b.Tag == category ? FontStyle.Bold : FontStyle.Regular);
-                b.BackColor = (string)b.Tag == category ? (isDarkMode ? Color.FromArgb(60,60,60) : Color.LightGray) : Color.Transparent;
+                bool isActive = (string)b.Tag == category;
+                b.BackColor = isActive ? (isDarkMode ? Color.FromArgb(60,60,60) : Color.LightGray) : Color.Transparent;
+                b.Font = new Font("Segoe UI", 10F, isActive ? FontStyle.Bold : FontStyle.Regular);
             }
 
-            // Create buttons if not cached or empty (since we initialize empty lists)
-            if (!buttonCache.ContainsKey(category) || buttonCache[category].Count == 0) {
-                buttonCache[category] = new List<Button>();
-                if (categories.ContainsKey(category)) {
-                     foreach(var script in categories[category]) {
-                         buttonCache[category].Add(CreateScriptButton(script));
-                     }
-                }
-            }
-
-            // Special Dashboard Handling
-            if (category == "DASHBOARD") {
-                RenderDashboard();
-            }
-            else if (category == "HELP") {
-                RenderHelp();
-            }
-            // Add cached buttons to panel
-            else if (buttonCache.ContainsKey(category))
+            if (category == "DASHBOARD") RenderDashboard();
+            else if (category == "HELP") RenderHelp();
+            else
             {
-                foreach(var btn in buttonCache[category])
-                {
-                    scriptsPanel.Controls.Add(btn);
-                    allScriptButtons.Add(btn);
+                List<ScriptInfo> scripts = new List<ScriptInfo>();
+                if (categories.ContainsKey(category)) scripts = categories[category];
+
+                foreach(var s in scripts) {
+                    scriptsPanel.Controls.Add(GetOrAddCard(s));
                 }
             }
 
-            // Re-apply batch mode state to new buttons (visiblity only)
-            // State (Checked) is preserved in the CheckBox control itself which stays in memory via buttonCache
-            ChkBatchMode_CheckedChanged(null, null);
+            ChkBatchMode_CheckedChanged(null, null); // Re-apply batch visibility
             scriptsPanel.ResumeLayout();
         }
 
-        private void RenderDashboard() {
-            Panel dash = new Panel { Dock = DockStyle.Top, Height = 400, Padding = new Padding(20) };
+        private void RenderDashboard()
+        {
+            if (dashboardPanel == null) {
+                dashboardPanel = new Panel { Width = Math.Max(100, scriptsPanel.Width - 40), AutoSize = true };
 
-            Label lblWelcome = new Label { Text = "System Status", Font = new Font("Segoe UI", 16F, FontStyle.Bold), Dock = DockStyle.Top, Height = 40, ForeColor = isDarkMode ? Color.White : Color.Black };
-            Label lblStats = new Label { Text = GetDetailedSystemInfo(), Font = new Font("Segoe UI", 11F), Dock = DockStyle.Top, Height = 100, AutoSize = false, ForeColor = isDarkMode ? Color.LightGray : Color.DarkSlateGray };
+                Label lblHeader = new Label { Text = "System Overview", Font = new Font("Segoe UI", 16F, FontStyle.Bold), AutoSize = true, Location = new Point(10, 10), ForeColor = isDarkMode ? colTextDark : colTextLight, Tag = "THEMEABLE" };
+                dashboardPanel.Controls.Add(lblHeader);
 
-            Label lblQuick = new Label { Text = "Quick Actions", Font = new Font("Segoe UI", 14F, FontStyle.Bold), Dock = DockStyle.Top, Height = 40, ForeColor = isDarkMode ? Color.White : Color.Black };
+                Label lblInfo = new Label { Text = GetDetailedSystemInfo(), Font = new Font("Consolas", 10F), AutoSize = true, Location = new Point(10, 50), ForeColor = isDarkMode ? Color.LightGray : Color.DarkSlateGray, Tag = "THEMEABLE_INFO" };
+                dashboardPanel.Controls.Add(lblInfo);
 
-            FlowLayoutPanel quickPanel = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 150, AutoScroll = false };
-            string[] quickScripts = { "2_InstallCleaningTools.ps1", "9_DiskHealthCheck.ps1", "1_CreateRestorePoint.ps1" };
-            foreach(var s in quickScripts) {
-                foreach(var cat in categories.Values) {
-                    var script = cat.FirstOrDefault(x => x.FileName == s);
-                    if(script != null) {
-                        quickPanel.Controls.Add(CreateScriptButton(script));
-                        break;
+                Label lblQuick = new Label { Text = "Quick Actions", Font = new Font("Segoe UI", 14F, FontStyle.Bold), AutoSize = true, Location = new Point(10, lblInfo.Bottom + 20), ForeColor = isDarkMode ? colTextDark : colTextLight, Tag = "THEMEABLE" };
+                dashboardPanel.Controls.Add(lblQuick);
+
+                FlowLayoutPanel quickFlow = new FlowLayoutPanel { Location = new Point(10, lblQuick.Bottom + 10), Width = dashboardPanel.Width, Height = 200, AutoScroll = false, Tag = "QUICK_FLOW" };
+
+                string[] quickScripts = { "2_InstallCleaningTools.ps1", "9_DiskHealthCheck.ps1", "1_CreateRestorePoint.ps1", "6_OptimizeAndUpdate.ps1" };
+                foreach(var s in quickScripts) {
+                    // Find script
+                    ScriptInfo info = null;
+                    foreach(var list in categories.Values) {
+                        info = list.FirstOrDefault(x => x.FileName == s);
+                        if (info != null) break;
                     }
+                    if (info != null) quickFlow.Controls.Add(GetOrAddCard(info));
+                }
+                dashboardPanel.Controls.Add(quickFlow);
+            }
+            // Update size just in case, ensuring safe value
+            if (scriptsPanel.Width > 40) dashboardPanel.Width = scriptsPanel.Width - 40;
+
+            // Ensure Quick Actions have current parent width
+            foreach(Control c in dashboardPanel.Controls) {
+                if (c is FlowLayoutPanel && c.Tag != null && c.Tag.ToString() == "QUICK_FLOW") {
+                    c.Width = dashboardPanel.Width;
                 }
             }
 
-            dash.Controls.Add(quickPanel);
-            dash.Controls.Add(lblQuick);
-            dash.Controls.Add(lblStats);
-            dash.Controls.Add(lblWelcome);
-
-            scriptsPanel.Controls.Add(dash);
+            scriptsPanel.Controls.Add(dashboardPanel);
         }
 
-        private void RenderHelp() {
-            string helpPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "HELP.md");
-            string helpText = File.Exists(helpPath) ? File.ReadAllText(helpPath) : "Help file not found.";
+        private void RenderHelp()
+        {
+            if (helpPanel == null) {
+                string helpPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "HELP.md");
+                if (!File.Exists(helpPath)) helpPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "HELP.md");
+                if (!File.Exists(helpPath)) helpPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "MaintenanceToolkit", "HELP.md");
 
-            TextBox txt = new TextBox {
-                Multiline = true,
-                Dock = DockStyle.Fill,
-                ReadOnly = true,
-                ScrollBars = ScrollBars.Vertical,
-                Font = new Font("Segoe UI", 10),
-                Text = helpText,
-                BackColor = isDarkMode ? Color.FromArgb(30,30,30) : Color.White,
-                ForeColor = isDarkMode ? Color.White : Color.Black,
-                BorderStyle = BorderStyle.None
+                string content = File.Exists(helpPath) ? File.ReadAllText(helpPath) : "# Error\nHelp file not found.";
+
+                // Basic Markdown to HTML
+                string html = "<html><body style='font-family:Segoe UI; padding:20px; color:" + (isDarkMode ? "#EEE" : "#222") + "; background-color:" + (isDarkMode ? "#222" : "#FFF") + "'>";
+                foreach(var line in content.Split('\n')) {
+                    string l = line.Trim();
+                    if (l.StartsWith("# ")) html += "<h1>" + l.Substring(2) + "</h1>";
+                    else if (l.StartsWith("## ")) html += "<h2>" + l.Substring(3) + "</h2>";
+                    else if (l.StartsWith("### ")) html += "<h3>" + l.Substring(4) + "</h3>";
+                    else if (l.StartsWith("- ")) html += "<li>" + l.Substring(2) + "</li>";
+                    else if (l.Length > 0) html += "<p>" + l + "</p>";
+                }
+                html += "</body></html>";
+
+                WebBrowser web = new WebBrowser { Dock = DockStyle.Fill, MinimumSize = new Size(20,20), Tag = "WEB_HELP" };
+                web.DocumentText = html;
+
+                // Wrapper Panel to set size in flow layout
+                helpPanel = new Panel { Width = Math.Max(100, scriptsPanel.Width - 40), Height = 600 };
+                helpPanel.Controls.Add(web);
+            }
+
+            if (scriptsPanel.Width > 40) helpPanel.Width = scriptsPanel.Width - 40;
+
+            scriptsPanel.Controls.Add(helpPanel);
+        }
+
+        private Panel CreateScriptCard(ScriptInfo script)
+        {
+            Panel card = new Panel();
+            card.Size = new Size(280, 150);
+            card.BackColor = isDarkMode ? colCardDark : colCardLight;
+            card.Margin = new Padding(10);
+            card.Tag = script;
+            card.AccessibleName = script.DisplayName;
+            card.AccessibleDescription = script.Description;
+            card.AccessibleRole = AccessibleRole.Client;
+
+            // Labels
+            Label lblTitle = new Label { Text = script.DisplayName, Font = new Font("Segoe UI", 10F, FontStyle.Bold), Location = new Point(10, 10), AutoSize = true, ForeColor = isDarkMode ? colTextDark : colTextLight, Tag = "THEMEABLE" };
+            Label lblDesc = new Label { Text = script.Description, Font = new Font("Segoe UI", 9F), Location = new Point(10, 35), Size = new Size(260, 60), ForeColor = isDarkMode ? Color.Gray : Color.DimGray, Tag = "THEMEABLE_DESC" };
+
+            // Badges
+            if (script.IsDestructive) { lblTitle.ForeColor = Color.Red; lblTitle.Text += " (!)"; }
+            if (script.IsInteractive) { lblTitle.Text += " *"; }
+
+            // Controls
+            Button btnRun = new Button { Text = "RUN", Size = new Size(80, 30), Location = new Point(180, 110), FlatStyle = FlatStyle.Flat, BackColor = colAccent, ForeColor = Color.White };
+            btnRun.AccessibleName = "Run " + script.DisplayName;
+            btnRun.AccessibleRole = AccessibleRole.PushButton;
+            btnRun.Click += (s, e) => {
+                 if (script.IsDestructive && MessageBox.Show(string.Format("Warning: {0} is destructive.\nProceed?", script.DisplayName), "Warning", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.No) return;
+                 RunScript(script);
             };
-            scriptsPanel.Controls.Add(txt);
+
+            CheckBox chkBatch = new CheckBox { Text = "Select", Location = new Point(10, 115), AutoSize = true, Visible = isBatchMode, Tag = "BATCH_CHK" };
+            chkBatch.AccessibleName = "Select " + script.DisplayName + " for Batch";
+
+            // Favorite Star
+            Label lblFav = new Label { Text = favoriteScripts.Contains(script.FileName) ? "★" : "☆", Location = new Point(250, 5), AutoSize = true, Font = new Font("Segoe UI", 12F), Cursor = Cursors.Hand, ForeColor = Color.Gold };
+            lblFav.AccessibleName = "Toggle Favorite for " + script.DisplayName;
+            lblFav.AccessibleRole = AccessibleRole.PushButton;
+            lblFav.Click += (s,e) => {
+                ToggleFavorite(script);
+                lblFav.Text = favoriteScripts.Contains(script.FileName) ? "★" : "☆";
+            };
+
+            card.Controls.Add(lblTitle);
+            card.Controls.Add(lblDesc);
+            card.Controls.Add(btnRun);
+            card.Controls.Add(chkBatch);
+            card.Controls.Add(lblFav);
+
+            return card;
+        }
+
+        private void ToggleFavorite(ScriptInfo script)
+        {
+            if (favoriteScripts.Contains(script.FileName)) favoriteScripts.Remove(script.FileName);
+            else favoriteScripts.Add(script.FileName);
+            SaveSettings();
+
+            // If currently viewing favorites, we need to refresh the view immediately
+            // But if we use cached cards, removing it from view is enough.
+            if (currentCategory == "FAVORITES") LoadCategory("FAVORITES");
+        }
+
+        // --- Execution Logic ---
+
+        private void RunScript(ScriptInfo script)
+        {
+            if (currentProcess != null && !currentProcess.HasExited) { MessageBox.Show("A script is already running."); return; }
+
+            Log("Starting: " + script.DisplayName);
+            statusLabel.Text = "Running: " + script.DisplayName;
+            progressBar.Visible = true;
+            btnCancel.Visible = !script.IsInteractive;
+
+            Task.Run(() => {
+                ExecuteScriptInternal(script);
+                Invoke((Action)(() => {
+                    Log("Finished: " + script.DisplayName);
+                    statusLabel.Text = "Ready";
+                    progressBar.Visible = false;
+                    btnCancel.Visible = false;
+                }));
+            });
+        }
+
+        private void ExecuteScriptInternal(ScriptInfo script)
+        {
+            string path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "scripts", script.FileName);
+            if (!File.Exists(path)) path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, script.FileName); // fallback
+
+            if (!File.Exists(path)) { Invoke((Action)(() => Log("Error: Script file not found at " + path))); return; }
+
+            try {
+                ProcessStartInfo psi = new ProcessStartInfo("powershell.exe",
+                    string.Format("-NoProfile -ExecutionPolicy Bypass {0} -File \"{1}\"", script.IsInteractive ? "-NoExit" : "-NonInteractive", path));
+
+                psi.UseShellExecute = script.IsInteractive;
+                psi.CreateNoWindow = !script.IsInteractive;
+                psi.StandardOutputEncoding = Encoding.UTF8;
+                psi.StandardErrorEncoding = Encoding.UTF8;
+
+                if (!script.IsInteractive) {
+                    psi.RedirectStandardOutput = true;
+                    psi.RedirectStandardError = true;
+                }
+
+                using (Process p = new Process { StartInfo = psi }) {
+                    if (!script.IsInteractive) {
+                        lock(processLock) currentProcess = p;
+                        p.OutputDataReceived += (s,e) => { if (e.Data!=null) Log(e.Data); };
+                        p.ErrorDataReceived += (s,e) => { if (e.Data!=null) Log("ERR: "+e.Data); };
+                        p.Start();
+                        p.BeginOutputReadLine(); p.BeginErrorReadLine();
+                        p.WaitForExit();
+                        lock(processLock) currentProcess = null;
+                    } else {
+                        Process.Start(psi);
+                    }
+                }
+            } catch (Exception ex) { Invoke((Action)(()=>Log("Error launching process: " + ex.Message))); }
+        }
+
+        private async void BtnRunBatch_Click(object sender, EventArgs e)
+        {
+            var queue = new List<ScriptInfo>();
+            // Iterate cache to find selected
+            foreach(var card in scriptCardCache.Values) {
+                foreach(Control c in card.Controls) {
+                    if (c is CheckBox && ((CheckBox)c).Checked && ((CheckBox)c).Tag.ToString() == "BATCH_CHK") {
+                        queue.Add((ScriptInfo)card.Tag);
+                    }
+                }
+            }
+            if (queue.Count == 0) return;
+
+            batchCts = new CancellationTokenSource();
+            btnRunBatch.Enabled = false;
+            progressBar.Visible = true;
+            btnCancel.Visible = true;
+
+            try {
+                int i=0;
+                foreach(var s in queue) {
+                     if (batchCts.IsCancellationRequested) break;
+                     statusLabel.Text = string.Format("Batch: ({0}/{1}) {2}", i+1, queue.Count, s.DisplayName);
+                     await Task.Run(() => ExecuteScriptInternal(s));
+                     i++;
+                }
+                Log("Batch Execution Completed.");
+            } finally {
+                btnRunBatch.Enabled = true;
+                progressBar.Visible = false;
+                btnCancel.Visible = false;
+                statusLabel.Text = "Ready";
+            }
+        }
+
+        private void BtnCancel_Click(object sender, EventArgs e) {
+            if (batchCts != null) batchCts.Cancel();
+            lock(processLock) {
+                if (currentProcess != null && !currentProcess.HasExited) {
+                    try { currentProcess.Kill(); Log("Process cancelled by user."); } catch {}
+                }
+            }
+        }
+
+        // --- Helper Logic ---
+        private void Log(string msg) {
+            if (txtLog.InvokeRequired) { txtLog.Invoke((Action)(()=>Log(msg))); return; }
+            txtLog.AppendText(string.Format("[{0}] {1}\r\n", DateTime.Now.ToShortTimeString(), msg));
+        }
+
+        private void TxtSearch_TextChanged(object sender, EventArgs e) {
+            string q = txtSearch.Text.Trim().ToLower(); // Trimmed
+            if (string.IsNullOrWhiteSpace(q)) {
+                 if (currentCategory == "SEARCH") LoadCategory("DASHBOARD");
+                 else LoadCategory(currentCategory);
+                 return;
+            }
+
+            scriptsPanel.SuspendLayout();
+            scriptsPanel.Controls.Clear();
+
+            HashSet<string> seen = new HashSet<string>();
+            foreach(var cat in categories.Values) {
+                foreach(var s in cat) {
+                    if ((s.DisplayName.ToLower().Contains(q) || s.Description.ToLower().Contains(q)) && seen.Add(s.FileName)) {
+                        scriptsPanel.Controls.Add(GetOrAddCard(s));
+                    }
+                }
+            }
+            scriptsPanel.ResumeLayout();
+        }
+
+        private void ChkBatchMode_CheckedChanged(object sender, EventArgs e) {
+            isBatchMode = chkBatchMode.Checked;
+            chkBatchMode.BackColor = isBatchMode ? colAccent : Color.Transparent;
+            chkBatchMode.ForeColor = isBatchMode ? Color.White : (isDarkMode ? colTextDark : colTextLight);
+
+            btnRunBatch.Visible = isBatchMode;
+            btnSelectAll.Visible = isBatchMode;
+            btnSelectNone.Visible = isBatchMode;
+
+            // Update all cached cards
+            foreach(var card in scriptCardCache.Values) {
+                foreach(Control c in card.Controls) {
+                    if (c is CheckBox && c.Tag != null && c.Tag.ToString() == "BATCH_CHK") c.Visible = isBatchMode;
+                }
+            }
+        }
+
+        private void SetAllBatchSelection(bool val) {
+             // Update all cached cards
+             foreach(var card in scriptCardCache.Values) {
+                foreach(Control c in card.Controls) {
+                    if (c is CheckBox && c.Tag != null && c.Tag.ToString() == "BATCH_CHK") ((CheckBox)c).Checked = val;
+                }
+            }
+        }
+
+        private void ToggleTheme() {
+            isDarkMode = !isDarkMode;
+            SaveSettings();
+
+            // Dispose old full-width panels to avoid memory leaks if we recreate them
+            if (dashboardPanel != null) { dashboardPanel.Dispose(); dashboardPanel = null; }
+            if (helpPanel != null) { helpPanel.Dispose(); helpPanel = null; }
+
+            ApplyTheme();
+
+            if (currentCategory == "DASHBOARD") RenderDashboard();
+            else if (currentCategory == "HELP") RenderHelp();
+            else LoadCategory(currentCategory);
+        }
+
+        private void ApplyTheme() {
+            if (SystemInformation.HighContrast) return; // Respect system HC
+
+            Color bg = isDarkMode ? colContentDark : colContentLight;
+            Color fg = isDarkMode ? colTextDark : colTextLight;
+
+            this.BackColor = bg;
+            this.ForeColor = fg;
+
+            sidebarPanel.BackColor = isDarkMode ? colSidebarDark : colSidebarLight;
+
+            // Sidebar buttons
+            foreach(var b in sidebarButtons) {
+                b.ForeColor = isDarkMode ? Color.White : Color.Black;
+                if ((string)b.Tag == currentCategory) b.BackColor = isDarkMode ? Color.FromArgb(60,60,60) : Color.LightGray;
+                else b.BackColor = Color.Transparent;
+            }
+
+            txtLog.BackColor = isDarkMode ? Color.Black : Color.White;
+            txtLog.ForeColor = isDarkMode ? Color.LimeGreen : Color.Black;
+
+            statusStrip.BackColor = isDarkMode ? Color.FromArgb(45,45,48) : Color.WhiteSmoke;
+            statusStrip.ForeColor = isDarkMode ? Color.White : Color.Black;
+
+            chkBatchMode.ForeColor = isBatchMode ? Color.White : fg;
+
+            // Update Cached Cards
+            foreach(var card in scriptCardCache.Values) {
+                card.BackColor = isDarkMode ? colCardDark : colCardLight;
+                foreach(Control c in card.Controls) {
+                    if (c.Tag != null && c.Tag.ToString() == "THEMEABLE") c.ForeColor = isDarkMode ? colTextDark : colTextLight;
+                    if (c.Tag != null && c.Tag.ToString() == "THEMEABLE_DESC") c.ForeColor = isDarkMode ? Color.Gray : Color.DimGray;
+                }
+            }
+        }
+
+        private void LoadSettings()
+        {
+            try {
+                if (File.Exists(SETTINGS_FILE)) isDarkMode = File.ReadAllText(SETTINGS_FILE).Contains("DarkMode=True");
+                if (File.Exists(FAVORITES_FILE)) favoriteScripts = new HashSet<string>(File.ReadAllLines(FAVORITES_FILE).Where(l => !string.IsNullOrWhiteSpace(l)));
+            } catch {}
+        }
+
+        private void SaveSettings()
+        {
+            try {
+                File.WriteAllText(SETTINGS_FILE, string.Format("DarkMode={0}", isDarkMode));
+                File.WriteAllLines(FAVORITES_FILE, favoriteScripts);
+            } catch {}
+        }
+
+        private void SaveLogToFile()
+        {
+            using (SaveFileDialog sfd = new SaveFileDialog())
+            {
+                sfd.Filter = "Text Files|*.txt";
+                sfd.FileName = "Log_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".txt";
+                if (sfd.ShowDialog() == DialogResult.OK) {
+                    try { File.WriteAllText(sfd.FileName, txtLog.Text); } catch(Exception ex) { MessageBox.Show("Error: "+ex.Message); }
+                }
+            }
+        }
+
+        public static bool IsAdministrator()
+        {
+            using (WindowsIdentity identity = WindowsIdentity.GetCurrent())
+            {
+                WindowsPrincipal principal = new WindowsPrincipal(identity);
+                return principal.IsInRole(WindowsBuiltInRole.Administrator);
+            }
+        }
+
+        private string GetDetailedSystemInfo()
+        {
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine("OS: " + Environment.OSVersion.ToString());
+            sb.AppendLine("Machine: " + Environment.MachineName);
+            sb.AppendLine("User: " + Environment.UserName);
+
+            try {
+                using (var searcher = new ManagementObjectSearcher("SELECT TotalVisibleMemorySize, FreePhysicalMemory FROM Win32_OperatingSystem"))
+                {
+                    foreach (var item in searcher.Get())
+                    {
+                        long totalRam = Convert.ToInt64(item["TotalVisibleMemorySize"]) / 1024;
+                        long freeRam = Convert.ToInt64(item["FreePhysicalMemory"]) / 1024;
+                        sb.AppendLine(string.Format("RAM: {0} MB Free / {1} MB Total", freeRam, totalRam));
+                    }
+                }
+                foreach (var drive in DriveInfo.GetDrives()) {
+                    if (drive.IsReady && drive.DriveType == DriveType.Fixed) {
+                         sb.AppendLine(string.Format("Disk ({0}): {1} GB Free / {2} GB Total", drive.Name, drive.TotalFreeSpace / 1073741824, drive.TotalSize / 1073741824));
+                    }
+                }
+            } catch {}
+            return sb.ToString();
         }
 
         private void InitializeData()
         {
             string[] cats = { "CLEAN", "REPAIR", "HARDWARE", "NETWORK", "SECURITY", "UTILS" };
-            categories["FAVORITES"] = new List<ScriptInfo>();
-            categories["DASHBOARD"] = new List<ScriptInfo>();
-            categories["HELP"] = new List<ScriptInfo>(); // Empty placeholder
             foreach (var c in cats) categories[c] = new List<ScriptInfo>();
+            categories["FAVORITES"] = new List<ScriptInfo>();
 
-            // Initialize Cache
-            foreach (var c in cats) buttonCache[c] = new List<Button>();
-            buttonCache["FAVORITES"] = new List<Button>();
-            buttonCache["DASHBOARD"] = new List<Button>();
-            buttonCache["HELP"] = new List<Button>();
-
-            // --- DEFINITIONS (Same as before) ---
             // CLEAN
             categories["CLEAN"].Add(new ScriptInfo("2_InstallCleaningTools.ps1", "Install Cleaners", "Installs Malwarebytes and BleachBit via Winget."));
             categories["CLEAN"].Add(new ScriptInfo("4_DeepCleanDisk.ps1", "Deep Disk Cleanup", "Runs Windows Disk Cleanup with advanced options."));
@@ -453,375 +785,11 @@ namespace SystemMaintenance
             categories["UTILS"].Add(new ScriptInfo("63_InstallEssentials.ps1", "Install Essentials", "Installs Chrome, VLC, 7Zip, etc."));
 
             // Populate Favorites
-            foreach (var kvp in categories) {
+            foreach(var kvp in categories) {
                 if (kvp.Key == "FAVORITES") continue;
-                foreach (var s in kvp.Value) {
+                foreach(var s in kvp.Value) {
                     if (favoriteScripts.Contains(s.FileName)) categories["FAVORITES"].Add(s);
                 }
-            }
-        }
-
-        private Button CreateScriptButton(ScriptInfo script)
-        {
-            Button btn = new Button();
-            btn.Text = script.DisplayName;
-            btn.Tag = script;
-            btn.Width = 280; // Slightly wider
-            btn.Height = 85;
-            btn.Margin = new Padding(8);
-            btn.FlatStyle = FlatStyle.Flat;
-            btn.FlatAppearance.BorderSize = 1; // Subtle border in content area
-            btn.TextAlign = ContentAlignment.MiddleLeft;
-
-            // Batch Mode Checkbox
-            CheckBox chk = new CheckBox();
-            chk.Tag = script;
-            chk.Parent = btn;
-            chk.Location = new Point(255, 5);
-            chk.Size = new Size(20, 20);
-            chk.Visible = isBatchMode;
-            chk.BackColor = Color.Transparent;
-            chk.CheckedChanged += (s, e) => UpdateBatchButton();
-
-            // Accessibility
-            btn.AccessibleName = script.DisplayName;
-            btn.AccessibleRole = AccessibleRole.PushButton;
-            btn.AccessibleDescription = script.Description;
-
-            // Visual indicators
-            if (script.IsDestructive) btn.ForeColor = isDarkMode ? Color.LightCoral : Color.Red;
-            if (script.IsInteractive) btn.Text += " *";
-            if (script.IsDestructive) btn.Text += " (!)";
-
-            btn.MouseEnter += (s, e) => {
-                lblDescTitle.Text = script.DisplayName;
-                lblDescText.Text = script.Description;
-                if (script.IsInteractive) lblDescText.Text += "\n[Opens separate window]";
-                if (script.IsDestructive) lblDescText.Text += "\n[WARNING: This action cannot be undone]";
-            };
-
-            ContextMenuStrip ctx = new ContextMenuStrip();
-            ctx.Items.Add("View Script Source", null, (s, e) => ViewScriptSource(script));
-            bool isFav = favoriteScripts.Contains(script.FileName);
-            ctx.Items.Add(isFav ? "Remove from Favorites" : "Add to Favorites", null, (s, e) => ToggleFavorite(script));
-            btn.ContextMenuStrip = ctx;
-
-            btn.Click += (s, e) => {
-                if (isBatchMode) { chk.Checked = !chk.Checked; return; }
-                if (script.IsDestructive && MessageBox.Show(string.Format("Warning: {0} is destructive.\nProceed?", script.DisplayName), "Warning", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.No) return;
-                RunScript(script);
-            };
-
-            return btn;
-        }
-
-        private void ToggleFavorite(ScriptInfo script)
-        {
-            if (favoriteScripts.Contains(script.FileName)) favoriteScripts.Remove(script.FileName);
-            else favoriteScripts.Add(script.FileName);
-            SaveSettings();
-
-            // Reload if currently on favorites, or just refresh data
-            InitializeData(); // Inefficient but safe logic reuse
-            if (currentCategory == "FAVORITES") LoadCategory("FAVORITES");
-        }
-
-        private void LoadSettings()
-        {
-            try {
-                if (File.Exists(SETTINGS_FILE)) isDarkMode = File.ReadAllText(SETTINGS_FILE).Contains("DarkMode=True");
-                if (File.Exists(FAVORITES_FILE)) favoriteScripts = new HashSet<string>(File.ReadAllLines(FAVORITES_FILE).Where(l => !string.IsNullOrWhiteSpace(l)));
-            } catch {}
-        }
-
-        private void SaveSettings()
-        {
-            try {
-                File.WriteAllText(SETTINGS_FILE, string.Format("DarkMode={0}", isDarkMode));
-                File.WriteAllLines(FAVORITES_FILE, favoriteScripts);
-            } catch {}
-        }
-
-        // --- Batch Mode Logic (Similar to previous) ---
-        private void ChkBatchMode_CheckedChanged(object sender, EventArgs e)
-        {
-            isBatchMode = chkBatchMode.Checked;
-            chkBatchMode.BackColor = isBatchMode ? colAccent : Color.Transparent;
-            chkBatchMode.ForeColor = isBatchMode ? Color.White : (isDarkMode ? Color.White : Color.Black);
-            btnRunBatch.Visible = isBatchMode;
-            btnSelectAll.Visible = isBatchMode;
-            btnSelectNone.Visible = isBatchMode;
-
-            foreach (var btn in allScriptButtons)
-            {
-                foreach (Control c in btn.Controls) if (c is CheckBox) c.Visible = isBatchMode;
-            }
-        }
-
-        private void SetAllBatchSelection(bool selected) {
-             foreach (var btn in allScriptButtons) {
-                 if (!btn.Visible) continue;
-                 foreach (Control c in btn.Controls) if (c is CheckBox) ((CheckBox)c).Checked = selected;
-             }
-        }
-
-        private void UpdateBatchButton() {
-            int count = 0;
-            // Iterate all cached buttons to allow cross-category execution
-            foreach(var cat in buttonCache.Values) {
-                foreach(var btn in cat) {
-                    foreach (Control c in btn.Controls) if (c is CheckBox && ((CheckBox)c).Checked) count++;
-                }
-            }
-            btnRunBatch.Text = string.Format("RUN BATCH ({0})", count);
-        }
-
-        private async void BtnRunBatch_Click(object sender, EventArgs e)
-        {
-             var scriptsToRun = new List<ScriptInfo>();
-             // Iterate all cached buttons
-             foreach(var cat in buttonCache.Values) {
-                 foreach(var btn in cat) {
-                    foreach (Control c in btn.Controls) if (c is CheckBox && ((CheckBox)c).Checked) scriptsToRun.Add((ScriptInfo)btn.Tag);
-                 }
-             }
-             // Deduplicate by filename (Favorites vs Category)
-             scriptsToRun = scriptsToRun.GroupBy(s => s.FileName).Select(g => g.First()).ToList();
-
-             if (scriptsToRun.Count == 0) return;
-
-             batchCts = new CancellationTokenSource();
-             btnRunBatch.Enabled = false;
-             progressBar.Visible = true;
-             btnCancel.Visible = true;
-
-             try {
-                 int i = 0;
-                 foreach(var s in scriptsToRun) {
-                     if (batchCts.IsCancellationRequested) break;
-                     statusLabel.Text = string.Format("Batch: Running {0} of {1}...", i+1, scriptsToRun.Count);
-                     await RunScriptAsync(s, batchCts.Token);
-                     i++;
-                 }
-             } finally {
-                 btnRunBatch.Enabled = true;
-                 progressBar.Visible = false;
-                 btnCancel.Visible = false;
-                 statusLabel.Text = "Batch Complete";
-             }
-        }
-
-        // --- Execution Logic (Same as previous) ---
-        private void ViewScriptSource(ScriptInfo script) {
-             string path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "scripts", script.FileName);
-             if (File.Exists(path)) {
-                 new Form { Text = script.FileName, Size = new Size(800,600), Controls = {
-                     new TextBox { Multiline=true, Dock=DockStyle.Fill, ScrollBars=ScrollBars.Vertical, ReadOnly=true, Text=File.ReadAllText(path), Font=new Font("Consolas",10) }
-                 }}.ShowDialog();
-             }
-        }
-
-        private void FilterButtons(string query) {
-             scriptsPanel.SuspendLayout();
-             if (string.IsNullOrWhiteSpace(query)) {
-                 // Restore current category view
-                 if (currentCategory == "SEARCH_RESULTS") LoadCategory("DASHBOARD"); // Or previous
-                 else LoadCategory(currentCategory);
-             } else {
-                 // Switch to search mode
-                 currentCategory = "SEARCH_RESULTS";
-                 scriptsPanel.Controls.Clear();
-                 allScriptButtons.Clear();
-
-                 var seen = new HashSet<string>();
-                 // Iterate all categories
-                 foreach(var cat in categories) {
-                     if (cat.Key == "FAVORITES" || cat.Key == "DASHBOARD") continue; // Skip dups
-                     foreach(var s in cat.Value) {
-                         if (s.DisplayName.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0 && seen.Add(s.FileName)) {
-                             Button btn = CreateScriptButton(s);
-                             scriptsPanel.Controls.Add(btn);
-                             allScriptButtons.Add(btn);
-                         }
-                     }
-                 }
-                 // If no results
-                 if (allScriptButtons.Count == 0) {
-                     Label lbl = new Label { Text = "No results found.", AutoSize = true, ForeColor = isDarkMode ? Color.White : Color.Black, Font = new Font("Segoe UI", 12F) };
-                     scriptsPanel.Controls.Add(lbl);
-                 }
-             }
-             scriptsPanel.ResumeLayout();
-        }
-        private void TxtSearch_TextChanged(object sender, EventArgs e) { FilterButtons(txtSearch.Text); }
-        private void BtnCancel_Click(object sender, EventArgs e) {
-            if (batchCts!=null) batchCts.Cancel();
-            lock(processLock) { if (currentProcess != null && !currentProcess.HasExited) currentProcess.Kill(); }
-        }
-
-        private Task RunScriptAsync(ScriptInfo script, CancellationToken token) {
-            return Task.Run(() => {
-                if (token.IsCancellationRequested) return;
-                Invoke((Action)(() => { Log("Starting: " + script.DisplayName); statusLabel.Text = "Running " + script.DisplayName; progressBar.Visible = true; }));
-                ExecuteScriptInternal(script);
-                Invoke((Action)(() => { Log("Completed: " + script.DisplayName); if (!isBatchMode) { statusLabel.Text = "Ready"; progressBar.Visible = false; } }));
-            });
-        }
-
-        private void RunScript(ScriptInfo script) {
-            if (currentProcess != null && !currentProcess.HasExited) { MessageBox.Show("Busy."); return; }
-            Log("Starting: " + script.DisplayName);
-            statusLabel.Text = "Running: " + script.DisplayName;
-            progressBar.Visible = true;
-            btnCancel.Visible = !script.IsInteractive;
-            Task.Run(() => {
-                ExecuteScriptInternal(script);
-                Invoke((Action)(() => { Log("Finished."); statusLabel.Text = "Ready"; progressBar.Visible = false; btnCancel.Visible = false; }));
-            });
-        }
-
-        private void ExecuteScriptInternal(ScriptInfo script) {
-            string path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "scripts", script.FileName);
-            if (!File.Exists(path)) path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, script.FileName);
-            if (!File.Exists(path)) { Invoke((Action)(()=>Log("Script not found."))); return; }
-
-            try {
-                ProcessStartInfo psi = new ProcessStartInfo("powershell.exe",
-                    string.Format("-NoProfile -ExecutionPolicy Bypass {0} -File \"{1}\"", script.IsInteractive ? "-NoExit" : "-NonInteractive", path));
-                psi.UseShellExecute = script.IsInteractive;
-                psi.CreateNoWindow = !script.IsInteractive;
-                psi.StandardOutputEncoding = Encoding.UTF8;
-                psi.StandardErrorEncoding = Encoding.UTF8;
-                if (!script.IsInteractive) { psi.RedirectStandardOutput = true; psi.RedirectStandardError = true; }
-
-                using (Process p = new Process { StartInfo = psi }) {
-                    if (!script.IsInteractive) {
-                        lock(processLock) currentProcess = p;
-                        p.OutputDataReceived += (s,e) => { if (e.Data!=null) Log(e.Data); };
-                        p.ErrorDataReceived += (s,e) => { if (e.Data!=null) Log("ERR: "+e.Data); };
-                        p.Start();
-                        p.BeginOutputReadLine(); p.BeginErrorReadLine();
-                        p.WaitForExit();
-                        lock(processLock) currentProcess = null;
-                    } else {
-                        Process.Start(psi);
-                    }
-                }
-            } catch (Exception ex) { Invoke((Action)(()=>Log("Error: " + ex.Message))); }
-        }
-
-        private void Log(string msg) {
-            if (txtLog.InvokeRequired) { txtLog.Invoke((Action)(()=>Log(msg))); return; }
-            txtLog.AppendText(string.Format("[{0}] {1}\r\n", DateTime.Now.ToShortTimeString(), msg));
-            try { File.AppendAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs", string.Format("log_{0:yyyyMMdd}.txt", DateTime.Now)), string.Format("[{0}] {1}\r\n", DateTime.Now, msg)); } catch {}
-        }
-
-        private void ShowHelp() {
-            MessageBox.Show("Ultimate System Maintenance Toolkit v68\n\nSidebar Navigation: Select a category.\nBatch Mode: Select multiple scripts in the current view to run.\nLogging: Logs are saved automatically.", "Help");
-        }
-
-        private void ToggleTheme() {
-            isDarkMode = !isDarkMode;
-            SaveSettings();
-            ApplyTheme();
-        }
-
-        private void ApplyTheme() {
-            if (SystemInformation.HighContrast) return;
-
-            Color bg = isDarkMode ? colContentDark : colContentLight;
-            Color fg = isDarkMode ? Color.White : Color.Black;
-            Color sbBg = isDarkMode ? colSidebarDark : colSidebarDark; // Sidebar always dark? Or varies. Let's make sidebar always dark for modern look.
-            Color sbFg = Color.White;
-
-            this.BackColor = bg;
-            this.ForeColor = fg;
-
-            sidebarPanel.BackColor = sbBg;
-
-            // Buttons in sidebar
-            foreach(Control c in sidebarPanel.Controls) {
-                if (c is Button) {
-                    c.ForeColor = sbFg;
-                    // Reset highlight
-                    if ((string)c.Tag == currentCategory) c.BackColor = isDarkMode ? Color.FromArgb(60,60,60) : Color.Gray;
-                    else c.BackColor = Color.Transparent;
-                }
-            }
-
-            // Content
-            scriptsPanel.BackColor = bg;
-            descPanel.BackColor = isDarkMode ? Color.FromArgb(40,40,40) : Color.WhiteSmoke;
-            descPanel.ForeColor = fg;
-
-            // Script Buttons
-            foreach(Button b in allScriptButtons) {
-                b.BackColor = isDarkMode ? Color.FromArgb(50,50,50) : Color.WhiteSmoke;
-                b.ForeColor = ((ScriptInfo)b.Tag).IsDestructive ? (isDarkMode ? Color.LightCoral : Color.Red) : fg;
-                b.FlatAppearance.BorderColor = isDarkMode ? Color.Gray : Color.Silver;
-            }
-
-            // Logs
-            txtLog.BackColor = isDarkMode ? Color.FromArgb(20,20,20) : Color.FromArgb(240,240,240);
-            txtLog.ForeColor = isDarkMode ? Color.LimeGreen : Color.Black;
-
-            statusStrip.BackColor = isDarkMode ? Color.Black : Color.White;
-            statusStrip.ForeColor = isDarkMode ? Color.White : Color.Black;
-        }
-
-        private void SaveLogToFile()
-        {
-            using (SaveFileDialog sfd = new SaveFileDialog())
-            {
-                sfd.Filter = "Text Files (*.txt)|*.txt|All Files (*.*)|*.*";
-                sfd.FileName = "MaintenanceLog_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".txt";
-                if (sfd.ShowDialog() == DialogResult.OK)
-                {
-                    try
-                    {
-                        File.WriteAllText(sfd.FileName, txtLog.Text);
-                        MessageBox.Show("Log saved successfully.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    }
-                    catch (Exception ex)
-                    {
-                        MessageBox.Show("Error saving log: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    }
-                }
-            }
-        }
-
-        private string GetDetailedSystemInfo()
-        {
-            StringBuilder sb = new StringBuilder();
-            sb.AppendLine("OS: " + Environment.OSVersion.ToString());
-            sb.AppendLine("Machine: " + Environment.MachineName);
-            sb.AppendLine("User: " + Environment.UserName);
-            sb.AppendLine("Processors: " + Environment.ProcessorCount);
-            sb.AppendLine("64-bit OS: " + Environment.Is64BitOperatingSystem);
-
-            try {
-                using (var searcher = new ManagementObjectSearcher("SELECT TotalVisibleMemorySize, FreePhysicalMemory FROM Win32_OperatingSystem"))
-                {
-                    foreach (var item in searcher.Get())
-                    {
-                        long totalRam = Convert.ToInt64(item["TotalVisibleMemorySize"]) / 1024;
-                        long freeRam = Convert.ToInt64(item["FreePhysicalMemory"]) / 1024;
-                        sb.AppendLine(string.Format("RAM: {0} MB Free / {1} MB Total", freeRam, totalRam));
-                    }
-                }
-            } catch {
-                 sb.AppendLine("RAM: Info unavailable");
-            }
-
-            return sb.ToString();
-        }
-
-        public static bool IsAdministrator()
-        {
-            using (WindowsIdentity identity = WindowsIdentity.GetCurrent())
-            {
-                WindowsPrincipal principal = new WindowsPrincipal(identity);
-                return principal.IsInRole(WindowsBuiltInRole.Administrator);
             }
         }
 
