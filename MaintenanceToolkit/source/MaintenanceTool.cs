@@ -67,6 +67,8 @@ namespace SystemMaintenance
         private Color colContentLight = Color.White;
         private Color colCardDark = Color.FromArgb(45, 45, 48);
         private Color colCardLight = Color.WhiteSmoke;
+        private Color colCardHoverDark = Color.FromArgb(65, 65, 68);
+        private Color colCardHoverLight = Color.FromArgb(230, 230, 230);
         private Color colAccent = Color.FromArgb(0, 122, 204);
         private Color colTextDark = Color.FromArgb(241, 241, 241);
         private Color colTextLight = Color.FromArgb(30, 30, 30);
@@ -507,6 +509,30 @@ namespace SystemMaintenance
             card.Controls.Add(chkBatch);
             card.Controls.Add(lblFav);
 
+            // Events for interactivity
+            EventHandler hoverEnter = (s, e) => card.BackColor = isDarkMode ? colCardHoverDark : colCardHoverLight;
+            EventHandler hoverLeave = (s, e) => card.BackColor = isDarkMode ? colCardDark : colCardLight;
+            EventHandler doubleClick = (s, e) => {
+                if (!isBatchMode) {
+                     if (script.IsDestructive && MessageBox.Show(string.Format("Warning: {0} is destructive.\nProceed?", script.DisplayName), "Warning", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.No) return;
+                     RunScript(script);
+                }
+            };
+
+            card.MouseEnter += hoverEnter;
+            card.MouseLeave += hoverLeave;
+            card.DoubleClick += doubleClick;
+
+            foreach (Control c in card.Controls)
+            {
+                if (!(c is Button) && !(c is CheckBox)) // Don't override interactive controls
+                {
+                    c.MouseEnter += hoverEnter;
+                    c.MouseLeave += hoverLeave;
+                    c.DoubleClick += doubleClick;
+                }
+            }
+
             return card;
         }
 
@@ -673,6 +699,9 @@ namespace SystemMaintenance
             }
             if (queue.Count == 0) return;
 
+            if (MessageBox.Show(string.Format("Ready to execute {0} scripts?\nThis process will run sequentially.", queue.Count), "Confirm Batch Run", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+                return;
+
             batchCts = new CancellationTokenSource();
             btnRunBatch.Enabled = false;
             progressBar.Visible = true;
@@ -720,6 +749,7 @@ namespace SystemMaintenance
         private void Log(string msg) {
             if (txtLog.InvokeRequired) { txtLog.Invoke((Action)(()=>Log(msg))); return; }
             txtLog.AppendText(string.Format("[{0}] {1}\r\n", DateTime.Now.ToShortTimeString(), msg));
+            txtLog.ScrollToCaret();
         }
 
         private void TxtSearch_TextChanged(object sender, EventArgs e) {
