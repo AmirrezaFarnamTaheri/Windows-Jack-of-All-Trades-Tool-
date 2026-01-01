@@ -55,7 +55,11 @@ try {
                 if ($currentBSSID.Keys.Count -gt 0) {
                     $sigRaw = $l -replace "Signal\s+: ", ""
                     $currentBSSID["Signal"] = $sigRaw
-                    $currentBSSID["SignalPct"] = [int](($sigRaw -replace '%','').Trim())
+                    if ([int]::TryParse(($sigRaw -replace '%','').Trim(), [ref]$parsed)) {
+                        $currentBSSID["SignalPct"] = $parsed
+                    } else {
+                        $currentBSSID["SignalPct"] = 0
+                    }
                 }
             } elseif ($l.StartsWith("Radio type")) {
                 if ($currentBSSID.Keys.Count -gt 0) {

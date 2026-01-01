@@ -31,10 +31,14 @@ try {
              }
         }
 
+        $model = $disk.Model
+        if ([string]::IsNullOrWhiteSpace($model)) { $model = $disk.FriendlyName }
+
         $diskReport += [PSCustomObject]@{
             ID = $disk.DeviceId
-            Name = $disk.FriendlyName
-            Type = "$media ($bus)"
+            Model = $model
+            "Media Type" = $media
+            Bus = $bus
             Health = $statusHtml
             "SSD Wear" = $wear
             Temp = $temp
