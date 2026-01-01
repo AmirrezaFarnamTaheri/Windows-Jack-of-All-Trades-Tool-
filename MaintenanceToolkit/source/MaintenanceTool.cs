@@ -750,8 +750,11 @@ namespace SystemMaintenance
 
                 // Set Diagnostic Env Var
                 if (chkVerbose.Checked) {
-                    if (psi.EnvironmentVariables.ContainsKey("MAINTENANCE_DIAG")) psi.EnvironmentVariables["MAINTENANCE_DIAG"] = "1";
-                    else psi.EnvironmentVariables.Add("MAINTENANCE_DIAG", "1");
+                    psi.EnvironmentVariables["MAINTENANCE_DIAG"] = "1";
+                } else {
+                    if (psi.EnvironmentVariables.ContainsKey("MAINTENANCE_DIAG")) {
+                        psi.EnvironmentVariables.Remove("MAINTENANCE_DIAG");
+                    }
                 }
                 if (!script.IsInteractive) {
                     psi.StandardOutputEncoding = Encoding.UTF8;

@@ -41,23 +41,48 @@ Start-Sleep -Seconds 2
 foreach ($t in $targets) {
     Write-Log "Cleaning $($t.Name)..." "Cyan"
 
+    $p = $t.Path
+    if ([string]::IsNullOrWhiteSpace($p)) {
+        Show-Warning "Skipping $($t.Name): empty path."
+        continue
+    }
+
+    $resolved = (Resolve-Path -LiteralPath $p -ErrorAction SilentlyContinue).Path
+    if (-not $resolved) {
+        Write-Diagnostic "Skipping $($t.Name): path not found ($p)."
+        continue
+    }
+
+    $root = [System.IO.Path]::GetPathRoot($resolved)
+    if ($resolved.TrimEnd('\') -eq $root.TrimEnd('\')) {
+        Show-Warning "Skipping $($t.Name): refusing to clean drive root ($resolved)."
+        continue
+    }
+
     # Special Handling
+    $wuWasRunning = $false
+    $bitsWasRunning = $false
+
     if ($t.Name -eq "Windows Update") {
+        $wuSvc = Get-Service -Name "wuauserv" -ErrorAction SilentlyContinue
+        $bitsSvc = Get-Service -Name "bits" -ErrorAction SilentlyContinue
+
+        $wuWasRunning = ($wuSvc -and $wuSvc.Status -eq 'Running')
+        $bitsWasRunning = ($bitsSvc -and $bitsSvc.Status -eq 'Running')
+
         Stop-ServiceSafe "wuauserv"
         Stop-ServiceSafe "bits"
     }
 
     try {
-        if (Test-Path $t.Path) {
-            Get-ChildItem -Path $t.Path -Recurse -Force -ErrorAction SilentlyContinue | Remove-Item -Force -Recurse -ErrorAction SilentlyContinue
-        }
+        Get-ChildItem -Path $resolved -Recurse -Force -ErrorAction SilentlyContinue | Remove-Item -Force -Recurse -ErrorAction SilentlyContinue
     } finally {
         if ($t.Name -eq "Windows Update") {
             $wu = Get-CimInstance Win32_Service -Filter "Name='wuauserv'" -ErrorAction SilentlyContinue
-            if ($wu -and $wu.StartMode -ne "Disabled") { Start-Service "wuauserv" -ErrorAction SilentlyContinue }
+            if ($wuWasRunning -and $wu -and $wu.StartMode -ne "Disabled") { Start-Service "wuauserv" -ErrorAction SilentlyContinue }
 
             $bits = Get-CimInstance Win32_Service -Filter "Name='bits'" -ErrorAction SilentlyContinue
-            if ($bits -and $bits.StartMode -ne "Disabled") { Start-Service "bits" -ErrorAction SilentlyContinue }
+            if ($bitsWasRunning -and $bits -and $bits.StartMode -ne "Disabled") { Start-Service "bits" -ErrorAction SilentlyContinue }
         }
     }
 }

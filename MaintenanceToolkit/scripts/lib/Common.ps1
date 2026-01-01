@@ -187,8 +187,8 @@ function Stop-ServiceSafe ($ServiceName) {
 }
 
 function Get-FolderSize ($Path) {
-    if (-not (Test-Path $Path)) { return 0 }
-    $size = (Get-ChildItem $Path -Recurse -Force -File -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
+    if (-not (Test-Path -LiteralPath $Path)) { return 0 }
+    $size = (Get-ChildItem -LiteralPath $Path -Recurse -Force -File -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
     if ($size) { return $size } else { return 0 }
 }
 
