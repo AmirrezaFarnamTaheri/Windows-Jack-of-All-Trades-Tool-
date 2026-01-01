@@ -181,7 +181,7 @@ namespace SystemMaintenance
 
             // Sidebar Footer
             Panel sidebarFooter = new Panel { Dock = DockStyle.Bottom, Height = 50 };
-            btnDarkMode = CreateSidebarButton("TOGGLE THEME");
+            btnDarkMode = CreateSidebarButton("TOGGLE THEME", "🌗 Toggle Theme");
             btnDarkMode.Dock = DockStyle.Fill;
             btnDarkMode.Click -= SidebarButton_Click;
             btnDarkMode.Click += (s,e) => ToggleTheme();
