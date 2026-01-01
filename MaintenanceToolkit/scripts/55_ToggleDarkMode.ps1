@@ -4,14 +4,22 @@ Write-Header "Toggling System Dark Mode"
 
 try {
     $key = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
-    $current = (Get-ItemProperty $key).AppsUseLightTheme
+
+    if (-not (Test-Path $key)) { New-Item -Path $key -Force | Out-Null }
+
+    $current = (Get-ItemProperty $key -ErrorAction SilentlyContinue).AppsUseLightTheme
+    if ($null -eq $current) { $current = 1 } # Default to Light if not found
 
     $newValue = if ($current -eq 0) { 1 } else { 0 }
+    $modeName = if ($newValue -eq 0) { "Dark" } else { "Light" }
 
-    Set-ItemProperty -Path $key -Name "AppsUseLightTheme" -Value $newValue
-    Set-ItemProperty -Path $key -Name "SystemUsesLightTheme" -Value $newValue
+    # System Theme (Taskbar, Start)
+    Set-RegKey -Path $key -Name "SystemUsesLightTheme" -Value $newValue -Type DWord
 
-    Write-Log "Theme Toggled." "Green"
+    # App Theme (Explorer, Settings)
+    Set-RegKey -Path $key -Name "AppsUseLightTheme" -Value $newValue -Type DWord
+
+    Write-Log "Theme switched to $modeName Mode." "Green"
 } catch {
     Write-Log "Error: $($_.Exception.Message)" "Red"
 }

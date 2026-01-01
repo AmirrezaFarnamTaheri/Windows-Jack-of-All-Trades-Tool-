@@ -14,9 +14,9 @@ try {
 
         if ($dupes) {
             foreach ($g in $dupes) {
-                Write-Host "`nDuplicate Group (MD5: $($g.Name))" -ForegroundColor Cyan
+                Write-Log "`nDuplicate Group (MD5: $($g.Name))" "Cyan"
                 foreach ($f in $g.Group) {
-                    Write-Host " - $($f.Path)" -ForegroundColor White
+                    Write-Log " - $($f.Path)" "White"
                 }
             }
         } else {

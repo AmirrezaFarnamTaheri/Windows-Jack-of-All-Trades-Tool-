@@ -22,6 +22,6 @@ try {
 } finally {
     Stop-Job $job -ErrorAction SilentlyContinue
     Remove-Job $job -ErrorAction SilentlyContinue
-    Write-Host "`nTest Stopped." -ForegroundColor Green
+    Write-Log "`nTest Stopped." "Green"
 }
 Pause-If-Interactive

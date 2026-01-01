@@ -9,9 +9,9 @@ try {
         try {
             $TargetHost = "8.8.8.8"
             $ping = Test-Connection -ComputerName $TargetHost -Count 1 -ErrorAction Stop
-            Write-Host "[$t] Reply from $($ping.Address): time=$($ping.ResponseTime)ms" -ForegroundColor Green
+            Write-Log "[$t] Reply from $($ping.Address): time=$($ping.ResponseTime)ms" "Green"
         } catch {
-            Write-Host "[$t] Request timed out." -ForegroundColor Red
+            Write-Log "[$t] Request timed out." "Red"
         }
         Start-Sleep -Seconds 1
     }

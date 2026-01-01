@@ -4,7 +4,7 @@ Write-Header "Fixing Windows Time Synchronization"
 
 try {
     Write-Log "Stopping Time Service..."
-    Stop-Service w32time -Force -ErrorAction SilentlyContinue
+    Stop-ServiceSafe "w32time" -ErrorAction SilentlyContinue
 
     Write-Log "Unregistering/Registering Time Service..."
     w32tm /unregister

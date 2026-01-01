@@ -3,13 +3,6 @@ Assert-Admin
 Write-Header "Applying Privacy & Telemetry Tweaks"
 Write-Log "Warning: Modifying Registry settings for privacy." "Yellow"
 
-# Helper to set reg safely
-function Set-RegVal ($Path, $Name, $Value, $Type="DWord") {
-    if (-not (Test-Path $Path)) { New-Item -Path $Path -Force -ErrorAction SilentlyContinue | Out-Null }
-    Set-ItemProperty -Path $Path -Name $Name -Value $Value -Type $Type -Force -ErrorAction SilentlyContinue | Out-Null
-    Write-Log "Set $Name = $Value at $Path" "Gray"
-}
-
 try {
     # Only backup if keys exist to avoid errors
     if (Test-Path "HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection") {
@@ -21,28 +14,33 @@ try {
 
     # 1. Advertising ID
     Write-Log "Disabling Advertising ID..."
-    Set-RegVal "HKCU:\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo" "Enabled" 0
+    Set-RegKey -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo" -Name "Enabled" -Value 0 -Type DWord
 
     # 2. Telemetry (AllowTelemetry = 0 [Security] or 1 [Basic])
     # Note: 0 works on Enterprise only, Home/Pro ignore it often, but we set it.
     Write-Log "Restricting Telemetry..."
-    Set-RegVal "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" "AllowTelemetry" 1
+    Set-RegKey -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" -Name "AllowTelemetry" -Value 1 -Type DWord
 
     # 3. Tailored Experiences
     Write-Log "Disabling Tailored Experiences..."
-    Set-RegVal "HKCU:\Software\Policies\Microsoft\Windows\CloudContent" "DisableTailoredExperiencesWithDiagnosticData" 1
+    Set-RegKey -Path "HKCU:\Software\Policies\Microsoft\Windows\CloudContent" -Name "DisableTailoredExperiencesWithDiagnosticData" -Value 1 -Type DWord
 
     # 4. Cortana
     Write-Log "Restricting Cortana..."
-    Set-RegVal "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search" "AllowCortana" 0
+    Set-RegKey -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search" -Name "AllowCortana" -Value 0 -Type DWord
 
-    # 5. Location Tracking (Optional - risky if user uses Maps)
-    # We skip this to be safe, or just disable "Location History"
-    # Set-RegVal "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\location" "Value" "Deny"
+    # 5. Disable Web Search in Start Menu
+    Write-Log "Disabling Bing Search in Start Menu..."
+    Set-RegKey -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search" -Name "DisableWebSearch" -Value 1 -Type DWord
+    Set-RegKey -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search" -Name "ConnectedSearchUseWeb" -Value 0 -Type DWord
 
-    # 6. Wifi Sense (Prevent sharing networks)
-    # This feature is largely removed in modern Win10/11 but good cleanup.
-    # Set-RegVal "HKLM:\SOFTWARE\Microsoft\WcmSvc\wifinetworkmanager\config" "AutoConnectAllowedOEM" 0
+    # 6. Disable Windows Tips (Soft Landing)
+    Write-Log "Disabling Windows Tips..."
+    Set-RegKey -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent" -Name "DisableSoftLanding" -Value 1 -Type DWord
+
+    # 7. Disable Windows Consumer Features (Spotlight/Candy Crush install)
+    Write-Log "Disabling Windows Consumer Features..."
+    Set-RegKey -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent" -Name "DisableWindowsConsumerFeatures" -Value 1 -Type DWord
 
     Write-Log "--- Privacy Settings Applied ---" "Green"
     Write-Log "A restart is recommended for all policies to take effect." "Cyan"

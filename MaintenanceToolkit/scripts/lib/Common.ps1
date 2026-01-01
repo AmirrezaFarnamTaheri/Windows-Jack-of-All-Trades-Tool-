@@ -4,7 +4,7 @@ function Assert-Admin {
     if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]"Administrator")) {
         Write-Host "Error: This script requires Administrator privileges." -ForegroundColor Red
         if (-not [Console]::IsInputRedirected) { Pause }
-        Exit
+        Exit 1
     }
 }
 
@@ -96,5 +96,37 @@ function Wait-ServiceStatus ($ServiceName, $Status, $TimeoutSeconds=30) {
         Write-Log "Warning: Service '$ServiceName' failed to reach state '$Status'." "Yellow"
     } else {
         Write-Log "Service '$ServiceName' is now $($svc.Status)." "Green"
+    }
+}
+
+function Set-RegKey {
+    param(
+        [string]$Path,
+        [string]$Name,
+        [string]$Value,
+        [string]$Type = "String",
+        [switch]$Force
+    )
+    try {
+        if (-not (Test-Path $Path)) {
+            New-Item -Path $Path -Force -ErrorAction Stop | Out-Null
+        }
+        New-ItemProperty -Path $Path -Name $Name -Value $Value -PropertyType $Type -Force -ErrorAction Stop | Out-Null
+        Write-Log "Registry Set: $Path\$Name = $Value" "Gray"
+    } catch {
+        Write-Log "Failed to set registry key: $Path\$Name. Error: $($_.Exception.Message)" "Red"
+    }
+}
+
+function Stop-ServiceSafe ($ServiceName) {
+    try {
+        $svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+        if ($svc -and $svc.Status -eq 'Running') {
+            Write-Log "Stopping service: $ServiceName..." "Yellow"
+            Stop-Service -Name $ServiceName -Force -ErrorAction Stop
+            Wait-ServiceStatus $ServiceName "Stopped" 15
+        }
+    } catch {
+        Write-Log "Error stopping service $ServiceName: $($_.Exception.Message)" "Red"
     }
 }

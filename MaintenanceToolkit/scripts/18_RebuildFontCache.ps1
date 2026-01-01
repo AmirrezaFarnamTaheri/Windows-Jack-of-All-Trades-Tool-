@@ -4,7 +4,7 @@ Write-Header "Rebuilding Font Cache"
 
 try {
     Write-Log "Stopping Font Cache Service..."
-    Stop-Service "FontCache" -Force -ErrorAction SilentlyContinue
+    Stop-ServiceSafe "FontCache" -ErrorAction SilentlyContinue
 
     Write-Log "Deleting Font Cache files..."
     Get-ChildItem "$env:WINDIR\ServiceProfiles\LocalService\AppData\Local\FontCache\*" -Include "*.dat" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue

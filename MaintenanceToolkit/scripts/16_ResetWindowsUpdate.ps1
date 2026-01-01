@@ -6,8 +6,7 @@ try {
     $services = "wuauserv", "cryptSvc", "bits", "msiserver"
 
     foreach ($svc in $services) {
-        Write-Log "Stopping $svc..."
-        Stop-Service $svc -Force -ErrorAction SilentlyContinue
+        Stop-ServiceSafe $svc
     }
 
     Write-Log "Renaming SoftwareDistribution and Catroot2..."

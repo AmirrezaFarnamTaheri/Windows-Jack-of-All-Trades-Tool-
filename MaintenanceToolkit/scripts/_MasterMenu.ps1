@@ -122,7 +122,7 @@ function Show-SubMenu ($Category) {
             Write-Host "63. Install Essential Apps"
         }
     }
-    Write-Host "------------------------------------------------------"
+    Write-Log "------------------------------------------------------"
     Write-Host "B. Back to Main Menu" -ForegroundColor Cyan
     $choice = Read-Host "Enter Script Number"
     if ($choice -eq 'B' -or $choice -eq 'b') { return }

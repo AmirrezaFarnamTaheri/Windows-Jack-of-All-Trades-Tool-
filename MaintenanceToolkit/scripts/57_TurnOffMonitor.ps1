@@ -13,7 +13,11 @@ public class Monitor {
 "@
 Add-Type $code
 
-Write-Log "Turning off monitor in 2 seconds..."
-Start-Sleep -Seconds 2
-[Monitor]::SendMessage(-1, 0x0112, 0xF170, 2) # SC_MONITORPOWER, 2=Off
+try {
+    Write-Log "Turning off monitor in 2 seconds..."
+    Start-Sleep -Seconds 2
+    [Monitor]::SendMessage(-1, 0x0112, 0xF170, 2) # SC_MONITORPOWER, 2=Off
+} catch {
+    Write-Log "Failed to turn off monitor: $($_.Exception.Message)" "Red"
+}
 Pause-If-Interactive

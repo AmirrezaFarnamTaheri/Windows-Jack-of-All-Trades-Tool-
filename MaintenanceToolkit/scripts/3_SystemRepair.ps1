@@ -18,6 +18,10 @@ try {
 
     $process = Start-Process -FilePath "dism.exe" -ArgumentList $dismArgs -Wait -NoNewWindow -PassThru
 
+    # Analyze Component Store (Cleanup opportunity)
+    Write-Log "Analyzing Component Store..."
+    Start-Process -FilePath "dism.exe" -ArgumentList "/Online /Cleanup-Image /AnalyzeComponentStore" -Wait -NoNewWindow
+
     if ($process.ExitCode -eq 0) {
         Write-Log "DISM ScanHealth Passed. No corruption detected." "Green"
     } else {

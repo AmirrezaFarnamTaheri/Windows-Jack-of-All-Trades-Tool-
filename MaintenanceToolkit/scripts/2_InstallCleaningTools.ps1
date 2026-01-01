@@ -11,15 +11,19 @@ if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
     return
 }
 
-# 1. Malwarebytes
-Write-Log "Installing Malwarebytes..."
-winget install --id Malwarebytes.Malwarebytes -e --silent --accept-package-agreements --accept-source-agreements
+try {
+    # 1. Malwarebytes
+    Write-Log "Installing Malwarebytes..."
+    winget install --id Malwarebytes.Malwarebytes -e --silent --accept-package-agreements --accept-source-agreements
 
-# 2. BleachBit
-Write-Log "Installing BleachBit..."
-winget install --id BleachBit.BleachBit -e --silent --accept-package-agreements --accept-source-agreements
+    # 2. BleachBit
+    Write-Log "Installing BleachBit..."
+    winget install --id BleachBit.BleachBit -e --silent --accept-package-agreements --accept-source-agreements
 
-Write-Log "--- Installation Complete ---" "Green"
-Write-Log "ACTION REQUIRED: Please open 'Malwarebytes' manually and run a scan now." "Magenta"
+    Write-Log "--- Installation Complete ---" "Green"
+    Write-Log "ACTION REQUIRED: Please open 'Malwarebytes' manually and run a scan now." "Magenta"
+} catch {
+    Write-Log "Error during installation: $($_.Exception.Message)" "Red" "ERROR"
+}
 
 Pause-If-Interactive
