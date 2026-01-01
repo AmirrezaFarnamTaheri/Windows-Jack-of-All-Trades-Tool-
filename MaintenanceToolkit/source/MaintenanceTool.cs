@@ -249,7 +249,7 @@ namespace SystemMaintenance
 
             try {
                 using (var searcher = new ManagementObjectSearcher("SELECT Caption FROM Win32_OperatingSystem")) {
-                    foreach (var item in searcher.Get()) { osName = item["Caption"]?.ToString() ?? osName; break; }
+                    foreach (var item in searcher.Get()) { if (item["Caption"] != null) osName = item["Caption"].ToString(); break; }
                 }
             } catch { }
 
@@ -267,7 +267,7 @@ namespace SystemMaintenance
 
             try {
                 using (var searcher = new ManagementObjectSearcher("SELECT Name FROM Win32_Processor")) {
-                    foreach (var item in searcher.Get()) { cpuName = item["Name"]?.ToString() ?? cpuName; break; }
+                    foreach (var item in searcher.Get()) { if (item["Name"] != null) cpuName = item["Name"].ToString(); break; }
                 }
             } catch { }
 
@@ -554,7 +554,8 @@ namespace SystemMaintenance
             {
                 if (!btn.Visible) continue; // Only affect visible buttons (current tab / filter)
                 foreach (Control c in btn.Controls) {
-                    if (c is CheckBox chk) chk.Checked = selected;
+                    CheckBox chk = c as CheckBox;
+                    if (chk != null) chk.Checked = selected;
                 }
             }
         }
@@ -565,7 +566,8 @@ namespace SystemMaintenance
             int count = 0;
             foreach (var btn in allButtons) {
                 foreach (Control c in btn.Controls) {
-                    if (c is CheckBox chk && chk.Checked) count++;
+                    CheckBox chk = c as CheckBox;
+                    if (chk != null && chk.Checked) count++;
                 }
             }
             btnRunBatch.Text = string.Format("RUN SELECTED ({0})", count);
@@ -580,7 +582,8 @@ namespace SystemMaintenance
 
             foreach (var btn in allButtons) {
                 foreach (Control c in btn.Controls) {
-                    if (c is CheckBox chk && chk.Checked) {
+                    CheckBox chk = c as CheckBox;
+                    if (chk != null && chk.Checked) {
                         ScriptInfo s = btn.Tag as ScriptInfo;
                         if (!seenFiles.Contains(s.FileName)) {
                             scriptsToRun.Add(s);
@@ -669,23 +672,28 @@ namespace SystemMaintenance
             panel.SuspendLayout();
             foreach (Control c in panel.Controls)
             {
-                if (c is Button btn && btn.Tag is ScriptInfo info)
+                Button btn = c as Button;
+                if (btn != null)
                 {
-                    bool match = true;
-                    if (tokens.Length > 0)
+                    ScriptInfo info = btn.Tag as ScriptInfo;
+                    if (info != null)
                     {
-                        foreach (var token in tokens)
+                        bool match = true;
+                        if (tokens.Length > 0)
                         {
-                            bool tokenMatch = info.DisplayName.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                              info.Description.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0;
-                            if (!tokenMatch)
+                            foreach (var token in tokens)
                             {
-                                match = false;
-                                break;
+                                bool tokenMatch = info.DisplayName.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                                  info.Description.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0;
+                                if (!tokenMatch)
+                                {
+                                    match = false;
+                                    break;
+                                }
                             }
                         }
+                        c.Visible = match;
                     }
-                    c.Visible = match;
                 }
             }
             panel.ResumeLayout();
@@ -879,9 +887,11 @@ namespace SystemMaintenance
 
                 // Refresh buttons inside panel
                 foreach(Control c in page.Controls) {
-                    if (c is FlowLayoutPanel p) {
+                    FlowLayoutPanel p = c as FlowLayoutPanel;
+                    if (p != null) {
                         foreach(Control btn in p.Controls) {
-                            if (btn is Button b) {
+                            Button b = btn as Button;
+                            if (b != null) {
                                 b.BackColor = btnBack;
                                 b.ForeColor = ((ScriptInfo)b.Tag).IsDestructive ? (isDarkMode ? Color.LightCoral : Color.Red) : foreColor;
                                 b.FlatAppearance.BorderColor = btnBorder;
