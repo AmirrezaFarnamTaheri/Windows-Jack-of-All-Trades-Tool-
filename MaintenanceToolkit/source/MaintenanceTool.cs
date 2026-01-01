@@ -86,6 +86,7 @@ namespace SystemMaintenance
             this.Icon = SystemIcons.Shield;
             this.Font = new Font("Segoe UI", 9F, FontStyle.Regular);
             this.DoubleBuffered = true;
+            this.KeyPreview = true; // For shortcuts
 
             // Check Admin
             if (!IsAdministrator())
@@ -98,6 +99,16 @@ namespace SystemMaintenance
             LoadCategory("DASHBOARD");
 
             this.FormClosing += OnFormClosing;
+            this.KeyDown += OnKeyDown;
+        }
+
+        private void OnKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Control && e.KeyCode == Keys.F)
+            {
+                txtSearch.Focus();
+                e.Handled = true;
+            }
         }
 
         private void OnFormClosing(object sender, FormClosingEventArgs e)
@@ -180,11 +191,24 @@ namespace SystemMaintenance
             sidebarHeader.SendToBack();
 
             // Sidebar Footer
-            Panel sidebarFooter = new Panel { Dock = DockStyle.Bottom, Height = 50 };
+            Panel sidebarFooter = new Panel { Dock = DockStyle.Bottom, Height = 100 };
+
+            Button btnOpenScripts = CreateSidebarButton("OPEN_SCRIPTS", "📂 Scripts Folder");
+            btnOpenScripts.Dock = DockStyle.Top;
+            btnOpenScripts.Click -= SidebarButton_Click;
+            btnOpenScripts.Click += (s, e) => {
+                string path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "scripts");
+                if (!Directory.Exists(path)) path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "MaintenanceToolkit", "scripts");
+                if (Directory.Exists(path)) Process.Start(path);
+                else MessageBox.Show("Scripts folder not found.");
+            };
+
             btnDarkMode = CreateSidebarButton("TOGGLE THEME", "🌗 Toggle Theme");
-            btnDarkMode.Dock = DockStyle.Fill;
+            btnDarkMode.Dock = DockStyle.Bottom;
             btnDarkMode.Click -= SidebarButton_Click;
             btnDarkMode.Click += (s,e) => ToggleTheme();
+
+            sidebarFooter.Controls.Add(btnOpenScripts);
             sidebarFooter.Controls.Add(btnDarkMode);
             sidebarPanel.Controls.Add(sidebarFooter);
 
@@ -377,6 +401,13 @@ namespace SystemMaintenance
                 dashboardPanel.Controls.Add(infoCard);
 
                 Label lblQuick = new Label { Text = "Quick Actions", Font = new Font("Segoe UI", 14F, FontStyle.Bold), AutoSize = true, Location = new Point(0, infoCard.Bottom + 20), ForeColor = isDarkMode ? colTextDark : colTextLight, Tag = "THEMEABLE" };
+
+                Button btnRefresh = new Button { Text = "↻", Size = new Size(30, 30), Location = new Point(150, infoCard.Bottom + 15), FlatStyle = FlatStyle.Flat, BackColor = Color.Transparent, ForeColor = colAccent };
+                btnRefresh.Click += (s, e) => {
+                     // Refresh Info
+                     lblInfo.Text = GetDetailedSystemInfo();
+                };
+                dashboardPanel.Controls.Add(btnRefresh);
                 dashboardPanel.Controls.Add(lblQuick);
 
                 FlowLayoutPanel quickFlow = new FlowLayoutPanel { Location = new Point(0, lblQuick.Bottom + 10), Width = dashboardPanel.Width, Height = 200, AutoScroll = false, Tag = "QUICK_FLOW" };
@@ -690,10 +721,9 @@ namespace SystemMaintenance
 
                 psi.UseShellExecute = script.IsInteractive;
                 psi.CreateNoWindow = !script.IsInteractive;
-                psi.StandardOutputEncoding = Encoding.UTF8;
-                psi.StandardErrorEncoding = Encoding.UTF8;
-
                 if (!script.IsInteractive) {
+                    psi.StandardOutputEncoding = Encoding.UTF8;
+                    psi.StandardErrorEncoding = Encoding.UTF8;
                     psi.RedirectStandardOutput = true;
                     psi.RedirectStandardError = true;
                 }
@@ -926,27 +956,85 @@ namespace SystemMaintenance
         private string GetDetailedSystemInfo()
         {
             StringBuilder sb = new StringBuilder();
-            sb.AppendLine("OS: " + Environment.OSVersion.ToString());
+            sb.AppendLine("OS: " + GetOSFriendlyName());
             sb.AppendLine("Machine: " + Environment.MachineName);
             sb.AppendLine("User: " + Environment.UserName);
+            sb.AppendLine("Uptime: " + GetUptime());
 
             try {
+                using (var searcher = new ManagementObjectSearcher("SELECT Name, NumberOfCores, NumberOfLogicalProcessors FROM Win32_Processor"))
+                {
+                    foreach (var item in searcher.Get())
+                    {
+                        sb.AppendLine("CPU: " + item["Name"].ToString());
+                        sb.AppendLine(string.Format("Cores: {0} | Threads: {1}", item["NumberOfCores"], item["NumberOfLogicalProcessors"]));
+                    }
+                }
+
+                try {
+                    using (var searcher = new ManagementObjectSearcher("SELECT Name, DriverVersion FROM Win32_VideoController"))
+                    {
+                        foreach (var item in searcher.Get())
+                        {
+                            sb.AppendLine("GPU: " + item["Name"].ToString());
+                        }
+                    }
+                } catch {}
+
                 using (var searcher = new ManagementObjectSearcher("SELECT TotalVisibleMemorySize, FreePhysicalMemory FROM Win32_OperatingSystem"))
                 {
                     foreach (var item in searcher.Get())
                     {
                         long totalRam = Convert.ToInt64(item["TotalVisibleMemorySize"]) / 1024;
                         long freeRam = Convert.ToInt64(item["FreePhysicalMemory"]) / 1024;
-                        sb.AppendLine(string.Format("RAM: {0} MB Free / {1} MB Total", freeRam, totalRam));
+                        double percentFree = (double)freeRam / totalRam * 100;
+                        sb.AppendLine(string.Format("RAM: {0} MB Free / {1} MB Total ({2:F1}% Free)", freeRam, totalRam, percentFree));
                     }
                 }
+
+                // Check Pending Reboot
+                bool reboot = false;
+                try { using (var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending")) { if (key != null) reboot = true; } } catch {}
+                try { using (var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired")) { if (key != null) reboot = true; } } catch {}
+
+                if (reboot) sb.AppendLine("STATUS: Pending Reboot (!)");
+
+                sb.AppendLine("--------------------------------------------------");
                 foreach (var drive in DriveInfo.GetDrives()) {
                     if (drive.IsReady && drive.DriveType == DriveType.Fixed) {
-                         sb.AppendLine(string.Format("Disk ({0}): {1} GB Free / {2} GB Total", drive.Name, drive.TotalFreeSpace / 1073741824, drive.TotalSize / 1073741824));
+                        long freeGb = drive.TotalFreeSpace / 1073741824;
+                        long totalGb = drive.TotalSize / 1073741824;
+                        double percentFree = (double)drive.TotalFreeSpace / drive.TotalSize * 100;
+                        sb.AppendLine(string.Format("Disk ({0}): {1} GB Free / {2} GB Total ({3:F1}% Free)", drive.Name, freeGb, totalGb, percentFree));
                     }
                 }
-            } catch {}
+            } catch (Exception ex) {
+                sb.AppendLine("Error gathering info: " + ex.Message);
+            }
             return sb.ToString();
+        }
+
+        private string GetOSFriendlyName()
+        {
+            try {
+                using (var searcher = new ManagementObjectSearcher("SELECT Caption FROM Win32_OperatingSystem"))
+                {
+                    foreach (var item in searcher.Get()) return item["Caption"].ToString();
+                }
+            } catch {}
+            return Environment.OSVersion.ToString();
+        }
+
+        private string GetUptime()
+        {
+            try {
+                using (var uptime = new PerformanceCounter("System", "System Up Time"))
+                {
+                    uptime.NextValue();
+                    TimeSpan ts = TimeSpan.FromSeconds(uptime.NextValue());
+                    return string.Format("{0}d {1}h {2}m", ts.Days, ts.Hours, ts.Minutes);
+                }
+            } catch { return "Unknown"; }
         }
 
         private void InitializeData()
@@ -958,6 +1046,7 @@ namespace SystemMaintenance
             // CLEAN
             categories["CLEAN"].Add(new ScriptInfo("2_InstallCleaningTools.ps1", "Install Cleaners", "Installs Malwarebytes and BleachBit via Winget."));
             categories["CLEAN"].Add(new ScriptInfo("4_DeepCleanDisk.ps1", "Deep Disk Cleanup", "Runs Windows Disk Cleanup with advanced options."));
+            categories["CLEAN"].Add(new ScriptInfo("75_ClearBrowserCache.ps1", "Clear Browser Cache", "Clears cache for Chrome, Edge, and Firefox."));
             categories["CLEAN"].Add(new ScriptInfo("5_SafeDebloat.ps1", "Safe Debloat", "Removes common bloatware apps safely."));
             categories["CLEAN"].Add(new ScriptInfo("13_NuclearTempClean.ps1", "Nuclear Temp Clean", "Aggressively cleans temporary files.", false, true));
             categories["CLEAN"].Add(new ScriptInfo("35_ListRecycleBin.ps1", "Scan Recycle Bin", "Lists hidden deleted files in Recycle Bin."));
@@ -992,6 +1081,9 @@ namespace SystemMaintenance
             categories["HARDWARE"].Add(new ScriptInfo("52_ReadChkdskLogs.ps1", "Read Chkdsk Logs", "Reads the latest Check Disk result from logs."));
             categories["HARDWARE"].Add(new ScriptInfo("64_CheckVirtualization.ps1", "Check Virtualization", "Checks if VT-x/AMD-V is enabled."));
             categories["HARDWARE"].Add(new ScriptInfo("65_DisableUsbSuspend.ps1", "Disable USB Suspend", "Fixes USB lag issues."));
+            categories["HARDWARE"].Add(new ScriptInfo("66_HardwareMonitor.ps1", "Hardware Monitor", "Real-time CPU/RAM/Disk monitor.", true));
+            categories["HARDWARE"].Add(new ScriptInfo("68_SSDTrim.ps1", "SSD Trim Optimization", "Forces a re-trim of the C: drive."));
+            categories["HARDWARE"].Add(new ScriptInfo("72_ResetBluetooth.ps1", "Reset Bluetooth", "Restarts Bluetooth services."));
 
             // NETWORK
             categories["NETWORK"].Add(new ScriptInfo("7_NetworkReset.ps1", "Network Reset", "Flushes DNS and resets IP/Winsock."));
@@ -1001,6 +1093,11 @@ namespace SystemMaintenance
             categories["NETWORK"].Add(new ScriptInfo("47_NetworkHeartbeat.ps1", "Network Heartbeat", "Monitors ping and packet loss.", true));
             categories["NETWORK"].Add(new ScriptInfo("53_OptimizeNetwork.ps1", "Optimize Internet", "Tunes TCP receive window."));
             categories["NETWORK"].Add(new ScriptInfo("58_BlockWebsite.ps1", "Block Website", "Blocks a domain via Hosts file.", true));
+            categories["NETWORK"].Add(new ScriptInfo("67_WifiScanner.ps1", "Wi-Fi Scanner", "Scans for nearby Wi-Fi networks.", true));
+            categories["NETWORK"].Add(new ScriptInfo("69_WlanReport.ps1", "Wireless Report", "Generates a detailed HTML Wi-Fi report."));
+            categories["NETWORK"].Add(new ScriptInfo("71_FirewallAudit.ps1", "Firewall Audit", "Checks firewall profiles and rules."));
+            categories["NETWORK"].Add(new ScriptInfo("79_ProcessConnections.ps1", "Process Connections", "Lists apps using the network.", true));
+            categories["NETWORK"].Add(new ScriptInfo("80_FlushDNSCache.ps1", "Flush DNS Cache", "Quickly flushes DNS and ARP caches."));
 
             // SECURITY
             categories["SECURITY"].Add(new ScriptInfo("8_PrivacyHardening.ps1", "Privacy Hardening", "Disables telemetry and ad ID."));
@@ -1010,17 +1107,22 @@ namespace SystemMaintenance
             categories["SECURITY"].Add(new ScriptInfo("32_VerifyFileHash.ps1", "Verify File Hash", "Calculates SHA256 hash of a file.", true));
             categories["SECURITY"].Add(new ScriptInfo("42_AuditNonMsServices.ps1", "Audit Services", "Lists non-Microsoft running services."));
             categories["SECURITY"].Add(new ScriptInfo("48_AuditUserAccounts.ps1", "Audit Users", "Lists local user accounts."));
+            categories["SECURITY"].Add(new ScriptInfo("78_UserLoginHistory.ps1", "Login History", "Audits recent user logins.", true));
             categories["SECURITY"].Add(new ScriptInfo("49_SecureDelete.ps1", "Secure Delete", "Wipes a file (3 passes).", true, true));
             categories["SECURITY"].Add(new ScriptInfo("59_PanicButton.ps1", "Panic Button", "Mutes, clears clipboard, minimizes all."));
 
             // UTILS
             categories["UTILS"].Add(new ScriptInfo("6_OptimizeAndUpdate.ps1", "Update All Software", "Runs Winget upgrade all."));
+            categories["UTILS"].Add(new ScriptInfo("74_WindowsUpdateHistory.ps1", "Update History", "Lists recent Windows Updates.", true));
             categories["UTILS"].Add(new ScriptInfo("15_ClearEventLogs.ps1", "Clear Event Logs", "Clears all Windows Event Logs."));
             categories["UTILS"].Add(new ScriptInfo("23_FindLargeFiles.ps1", "Find Large Files", "Scans user profile for large files."));
             categories["UTILS"].Add(new ScriptInfo("26_ClearClipboard.ps1", "Clear Clipboard", "Wipes clipboard history."));
+            categories["UTILS"].Add(new ScriptInfo("77_ResetWindowsSearch.ps1", "Reset Search Index", "Rebuilds Windows Search database."));
             categories["UTILS"].Add(new ScriptInfo("27_CheckStability.ps1", "Check Stability", "Checks for recent crashes/BSODs."));
+            categories["UTILS"].Add(new ScriptInfo("76_SystemStabilityScore.ps1", "Stability Score", "View System Stability Index history.", true));
             categories["UTILS"].Add(new ScriptInfo("28_GetBiosKey.ps1", "Get BIOS Key", "Retrieves OEM Windows Key."));
             categories["UTILS"].Add(new ScriptInfo("29_ProcessFreezer.ps1", "Process Freezer", "Suspends/Resumes processes.", true));
+            categories["UTILS"].Add(new ScriptInfo("73_StartupAppsManager.ps1", "Startup Manager", "Lists startup applications.", true));
             categories["UTILS"].Add(new ScriptInfo("33_EnableGodMode.ps1", "Enable God Mode", "Creates God Mode folder on Desktop."));
             categories["UTILS"].Add(new ScriptInfo("43_CheckBootTime.ps1", "Analyze Boot Time", "Checks BIOS boot duration."));
             categories["UTILS"].Add(new ScriptInfo("44_ExportInstalledApps.ps1", "Export App List", "Saves installed apps to CSV."));
@@ -1031,6 +1133,7 @@ namespace SystemMaintenance
             categories["UTILS"].Add(new ScriptInfo("60_EmergencyRestart.ps1", "Emergency Restart", "Forces immediate reboot.", true, true));
             categories["UTILS"].Add(new ScriptInfo("61_CheckActivation.ps1", "Check Activation", "Checks license expiry."));
             categories["UTILS"].Add(new ScriptInfo("63_InstallEssentials.ps1", "Install Essentials", "Installs Chrome, VLC, 7Zip, etc."));
+            categories["UTILS"].Add(new ScriptInfo("70_DetailedSysInfo.ps1", "Export System Spec", "Dumps full system info to a text file."));
 
             // Populate Favorites
             foreach(var kvp in categories) {

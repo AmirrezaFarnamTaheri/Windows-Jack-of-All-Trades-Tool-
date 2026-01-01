@@ -1,6 +1,9 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
 Write-Header "USB Write Protection"
+Get-SystemSummary
+Write-Section "Configuration"
+
 $choice = Read-Host "Enable Write Protect (Y/N)?"
 
 try {
@@ -9,12 +12,12 @@ try {
 
     if ($choice -eq "Y") {
         Set-ItemProperty -Path $key -Name "WriteProtect" -Value 1 -Type DWord
-        Write-Log "USB Write Protection ENABLED." "Green"
+        Show-Success "USB Write Protection ENABLED."
     } else {
         Set-ItemProperty -Path $key -Name "WriteProtect" -Value 0 -Type DWord
-        Write-Log "USB Write Protection DISABLED." "Green"
+        Show-Success "USB Write Protection DISABLED."
     }
 } catch {
-    Write-Log "Error: $($_.Exception.Message)" "Red"
+    Show-Error "Error: $($_.Exception.Message)"
 }
 Pause-If-Interactive

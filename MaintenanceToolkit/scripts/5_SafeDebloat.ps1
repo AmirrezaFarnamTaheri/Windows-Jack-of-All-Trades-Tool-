@@ -1,7 +1,8 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
 Write-Header "Safe Bloatware Removal"
-Write-Log "Scanning for common bloatware..."
+Get-SystemSummary
+Write-Section "Scanning for Bloatware"
 
 # Safer list - removing core apps like Calculator or Photos is risky/annoying.
 # We focus on promotional/junk apps.
@@ -39,21 +40,18 @@ try {
             } catch {
                 Write-Log "Failed to remove ${App}: $($_.Exception.Message)" "Red"
             }
-        } else {
-            # Verbose logging only, to keep UI clean
-            # Write-Log "$App not found (already clean)." "Gray"
         }
     }
 
+    Write-Section "Summary"
     if ($removedCount -eq 0) {
-        Write-Log "System appears clean. No common bloatware found." "Green"
+        Show-Success "System appears clean. No common bloatware found."
     } else {
-        Write-Log "Removal Complete. $removedCount apps removed." "Cyan"
+        Show-Success "Removal Complete. $removedCount apps removed."
     }
 
 } catch {
-    Write-Log "Error during debloat process: $($_.Exception.Message)" "Red" "ERROR"
+    Show-Error "Error during debloat process: $($_.Exception.Message)"
 }
 
-Write-Log "--- Safe Debloat Finished ---" "White"
 Pause-If-Interactive

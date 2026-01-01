@@ -1,18 +1,23 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
-Write-Header "Reading Check Disk (chkdsk) Logs"
+Write-Header "Read CHKDSK Logs"
+Get-SystemSummary
+Write-Section "Analysis"
 
 try {
-    Write-Log "Searching Event Log for Wininit events..."
-    $log = Get-EventLog -LogName Application -Source Wininit -Newest 1 -ErrorAction SilentlyContinue
+    # Chkdsk logs are in Application Event Log, source 'Wininit' (boot scan) or 'Chkdsk'
+    $log = Get-EventLog -LogName Application -Source "Wininit", "Chkdsk" -Newest 1 -ErrorAction SilentlyContinue
 
     if ($log) {
-        Write-Log "Latest Chkdsk Run: $($log.TimeGenerated)" "Cyan"
-        Write-Log $log.Message "White"
+        Write-Log "Latest Check Disk Result ($($log.TimeGenerated)):" "Cyan"
+        Write-Host "----------------------------------------" -ForegroundColor Gray
+        Write-Host $log.Message -ForegroundColor White
+        Write-Host "----------------------------------------" -ForegroundColor Gray
+        Show-Success "Log retrieved."
     } else {
-        Write-Log "No Chkdsk logs found in Application Event Log." "Yellow"
+        Write-Log "No recent CHKDSK logs found." "Yellow"
     }
 } catch {
-    Write-Log "Error: $($_.Exception.Message)" "Red"
+    Show-Error "Error: $($_.Exception.Message)"
 }
 Pause-If-Interactive

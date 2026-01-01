@@ -1,6 +1,8 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
 Write-Header "Disabling USB Selective Suspend"
+Get-SystemSummary
+Write-Section "Execution"
 
 try {
     # GUIDs:
@@ -16,8 +18,8 @@ try {
 
     powercfg /SetActive SCHEME_CURRENT
 
-    Write-Log "USB Selective Suspend Disabled." "Green"
+    Show-Success "USB Selective Suspend Disabled."
 } catch {
-    Write-Log "Error: $($_.Exception.Message)" "Red"
+    Show-Error "Error: $($_.Exception.Message)"
 }
 Pause-If-Interactive

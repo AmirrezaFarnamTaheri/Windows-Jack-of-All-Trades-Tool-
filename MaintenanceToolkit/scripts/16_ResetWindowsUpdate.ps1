@@ -1,6 +1,8 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
 Write-Header "Resetting Windows Update Components"
+Get-SystemSummary
+Write-Section "Execution"
 
 try {
     $services = "wuauserv", "cryptSvc", "bits", "msiserver"
@@ -18,8 +20,8 @@ try {
         Start-Service $svc -ErrorAction SilentlyContinue
     }
 
-    Write-Log "Windows Update Components Reset." "Green"
+    Show-Success "Windows Update Components Reset."
 } catch {
-    Write-Log "Error: $($_.Exception.Message)" "Red"
+    Show-Error "Error: $($_.Exception.Message)"
 }
 Pause-If-Interactive

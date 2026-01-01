@@ -1,6 +1,8 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
 Write-Header "Rebuilding Icon Cache"
+Get-SystemSummary
+Write-Section "Execution"
 
 try {
     Write-Log "Closing Explorer..." "Yellow"
@@ -13,9 +15,9 @@ try {
 
     Write-Log "Restarting Explorer..." "Cyan"
     Start-Process explorer
-    Write-Log "Icon Cache Rebuilt." "Green"
+    Show-Success "Icon Cache Rebuilt."
 } catch {
-    Write-Log "Error: $($_.Exception.Message)" "Red"
+    Show-Error "Error: $($_.Exception.Message)"
     # Ensure explorer restarts even on error
     if (-not (Get-Process explorer -ErrorAction SilentlyContinue)) { Start-Process explorer }
 }

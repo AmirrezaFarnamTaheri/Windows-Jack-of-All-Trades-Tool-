@@ -1,21 +1,34 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
 Write-Header "Retrieving Saved Wi-Fi Passwords"
+Get-SystemSummary
+Write-Section "Saved Networks"
 
 try {
     $profiles = netsh wlan show profiles | Select-String "All User Profile" | ForEach-Object { $_.ToString().Split(":")[1].Trim() }
 
-    foreach ($p in $profiles) {
-        $info = netsh wlan show profile name="$p" key=clear
-        $key = $info | Select-String "Key Content"
-        if ($key) {
-            $pass = $key.ToString().Split(":")[1].Trim()
-            Write-Log "SSID: $p  |  Password: $pass" "Cyan"
-        } else {
-            Write-Log "SSID: $p  |  Password: (Open/No Key)" "Gray"
+    if ($profiles) {
+        foreach ($p in $profiles) {
+            $info = netsh wlan show profile name="$p" key=clear
+            $keyLine = $info | Select-String "Key Content"
+
+            if ($keyLine) {
+                $pass = $keyLine.ToString().Split(":")[1].Trim()
+                Write-Log "SSID: $p" "Cyan"
+                Write-Log "Pass: $pass" "Green"
+                Write-Host "----------------------------------------" -ForegroundColor DarkGray
+            } else {
+                Write-Log "SSID: $p" "Gray"
+                Write-Log "Pass: (Open/No Key)" "DarkGray"
+                Write-Host "----------------------------------------" -ForegroundColor DarkGray
+            }
         }
+        Show-Success "Scan complete."
+    } else {
+        Write-Log "No Wi-Fi profiles found." "Yellow"
     }
+
 } catch {
-    Write-Log "Error: $($_.Exception.Message)" "Red"
+    Show-Error "Error: $($_.Exception.Message)"
 }
 Pause-If-Interactive

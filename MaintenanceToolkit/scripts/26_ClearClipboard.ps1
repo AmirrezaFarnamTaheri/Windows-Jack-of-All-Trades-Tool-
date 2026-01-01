@@ -1,16 +1,53 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
 Write-Header "Clearing Clipboard"
+Get-SystemSummary
 
 try {
-    Write-Log "Clearing Clipboard..."
+    Write-Section "Clearing Current Content"
     Set-Clipboard $null
-    # Restart clipboard service if needed on Win10/11? Not standard.
-    # Just verify
+
+    # Verify
     if (-not (Get-Clipboard)) {
-        Write-Log "Clipboard Cleared." "Green"
+        Show-Success "Current clipboard cleared."
     }
+
+    # Attempt to clear history (Windows 10/11)
+    Write-Section "Clearing Clipboard History"
+    try {
+        # Using WinRT API via PowerShell
+        $code = @"
+using System;
+using System.Runtime.InteropServices;
+using Windows.ApplicationModel.DataTransfer;
+
+public class ClipboardHelper {
+    public static bool ClearHistory() {
+        return Clipboard.ClearHistory();
+    }
+}
+"@
+        # This requires Windows Runtime references which are tricky in PS 5.1
+        # Fallback to simple Restart-Service for Clipboard User Service if possible,
+        # or just warn user.
+
+        Write-Log "To clear Clipboard History (Win+V), we will restart the service." "Cyan"
+
+        # Service name usually: cbdhsvc_xxxxx (per user)
+        $svc = Get-Service | Where-Object { $_.Name -like "cbdhsvc*" }
+        if ($svc) {
+            Stop-Service -Name $svc.Name -Force -ErrorAction SilentlyContinue
+            Start-Service -Name $svc.Name -ErrorAction SilentlyContinue
+            Show-Success "Clipboard User Service restarted."
+        } else {
+            Write-Log "Clipboard service not found or accessible." "Yellow"
+        }
+
+    } catch {
+        Write-Log "Could not clear history programmatically." "Yellow"
+    }
+
 } catch {
-    Write-Log "Error: $($_.Exception.Message)" "Red"
+    Show-Error "Error: $($_.Exception.Message)"
 }
 Pause-If-Interactive

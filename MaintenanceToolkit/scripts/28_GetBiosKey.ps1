@@ -1,15 +1,17 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
 Write-Header "Get OEM BIOS Key"
+Get-SystemSummary
+Write-Section "Execution"
 
 try {
     $key = (Get-WmiObject -Class SoftwareLicensingService).OA3xOriginalProductKey
     if ($key) {
-        Write-Log "OEM Key Found: $key" "Green"
+        Show-Success "OEM Key Found: $key"
     } else {
         Write-Log "No OEM Key found in firmware." "Yellow"
     }
 } catch {
-    Write-Log "Error: $($_.Exception.Message)" "Red"
+    Show-Error "Error: $($_.Exception.Message)"
 }
 Pause-If-Interactive

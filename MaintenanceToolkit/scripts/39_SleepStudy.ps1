@@ -1,20 +1,21 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
-Write-Header "Generating System Sleep Study"
-Write-Log "Analyzing battery drain during sleep (Duration: 3 days)..." "Yellow"
-
-$path = "$env:USERPROFILE\Desktop\SleepStudy.html"
+Write-Header "Sleep Study (Battery Drain Analysis)"
+Get-SystemSummary
+Write-Section "Analysis"
 
 try {
+    $path = "$env:TEMP\sleep-study.html"
+    Write-Log "Running powercfg /sleepstudy..." "Cyan"
     powercfg /sleepstudy /output "$path" /duration 3
 
     if (Test-Path $path) {
-        Write-Log "Report generated: $path" "Green"
+        Show-Success "Report generated at $path"
         Start-Process "$path"
     } else {
-        Write-Log "Failed to generate report." "Red"
+        Show-Error "Failed to generate report."
     }
 } catch {
-    Write-Log "Error: $($_.Exception.Message)" "Red"
+    Show-Error "Error: $($_.Exception.Message)"
 }
 Pause-If-Interactive

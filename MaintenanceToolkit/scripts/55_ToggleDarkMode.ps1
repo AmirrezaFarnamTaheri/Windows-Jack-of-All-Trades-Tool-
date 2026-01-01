@@ -1,26 +1,25 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
-Write-Header "Toggling System Dark Mode"
+Write-Header "Toggle System Dark Mode"
+Get-SystemSummary
+Write-Section "Execution"
 
 try {
-    $key = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
+    $reg = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
+    $val = Get-ItemProperty -Path $reg -Name "AppsUseLightTheme" -ErrorAction SilentlyContinue
 
-    if (-not (Test-Path $key)) { New-Item -Path $key -Force | Out-Null }
-
-    $current = (Get-ItemProperty $key -ErrorAction SilentlyContinue).AppsUseLightTheme
-    if ($null -eq $current) { $current = 1 } # Default to Light if not found
-
-    $newValue = if ($current -eq 0) { 1 } else { 0 }
-    $modeName = if ($newValue -eq 0) { "Dark" } else { "Light" }
-
-    # System Theme (Taskbar, Start)
-    Set-RegKey -Path $key -Name "SystemUsesLightTheme" -Value $newValue -Type DWord
-
-    # App Theme (Explorer, Settings)
-    Set-RegKey -Path $key -Name "AppsUseLightTheme" -Value $newValue -Type DWord
-
-    Write-Log "Theme switched to $modeName Mode." "Green"
+    if ($val.AppsUseLightTheme -eq 1) {
+        Write-Log "Switching to Dark Mode..."
+        Set-ItemProperty -Path $reg -Name "AppsUseLightTheme" -Value 0
+        Set-ItemProperty -Path $reg -Name "SystemUsesLightTheme" -Value 0
+        Show-Success "Dark Mode Enabled."
+    } else {
+        Write-Log "Switching to Light Mode..."
+        Set-ItemProperty -Path $reg -Name "AppsUseLightTheme" -Value 1
+        Set-ItemProperty -Path $reg -Name "SystemUsesLightTheme" -Value 1
+        Show-Success "Light Mode Enabled."
+    }
 } catch {
-    Write-Log "Error: $($_.Exception.Message)" "Red"
+    Show-Error "Error: $($_.Exception.Message)"
 }
 Pause-If-Interactive

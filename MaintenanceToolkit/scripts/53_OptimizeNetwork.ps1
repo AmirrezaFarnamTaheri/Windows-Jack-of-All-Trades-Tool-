@@ -1,6 +1,8 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
 Write-Header "Optimizing Network TCP Settings"
+Get-SystemSummary
+Write-Section "Execution"
 
 try {
     Write-Log "Setting TCP Global Autotuning to Normal..."
@@ -9,8 +11,8 @@ try {
     Write-Log "Disabling Windows Scaling Heuristics..."
     netsh int tcp set heuristics disabled
 
-    Write-Log "Network Optimization Applied." "Green"
+    Show-Success "Network Optimization Applied."
 } catch {
-    Write-Log "Error: $($_.Exception.Message)" "Red"
+    Show-Error "Error: $($_.Exception.Message)"
 }
 Pause-If-Interactive

@@ -1,29 +1,28 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
-Write-Header "Installing Advanced Cleaning Tools via Winget"
+Write-Header "Installing Advanced Cleaning Tools"
+Get-SystemSummary
 
 # Check if Winget is installed
-if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
-    Write-Log "Winget not found. Attempting to install App Installer..." "Yellow"
-    Write-Log "Winget is required for this script. Please install 'App Installer' from the Microsoft Store or update Windows." "Red"
+if (-not (Test-IsWingetAvailable)) {
+    Show-Error "Winget not found. Please install 'App Installer' from the Microsoft Store."
     Write-Log "Visit: https://aka.ms/getwinget" "Cyan"
     if (-not [Console]::IsInputRedirected) { Pause }
     return
 }
 
 try {
-    # 1. Malwarebytes
-    Write-Log "Installing Malwarebytes..."
+    Write-Section "Installing Malwarebytes"
     winget install --id Malwarebytes.Malwarebytes -e --silent --accept-package-agreements --accept-source-agreements
 
-    # 2. BleachBit
-    Write-Log "Installing BleachBit..."
+    Write-Section "Installing BleachBit"
     winget install --id BleachBit.BleachBit -e --silent --accept-package-agreements --accept-source-agreements
 
-    Write-Log "--- Installation Complete ---" "Green"
+    Write-Section "Installation Complete"
+    Show-Success "Tools installed successfully."
     Write-Log "ACTION REQUIRED: Please open 'Malwarebytes' manually and run a scan now." "Magenta"
 } catch {
-    Write-Log "Error during installation: $($_.Exception.Message)" "Red" "ERROR"
+    Show-Error "Error during installation: $($_.Exception.Message)"
 }
 
 Pause-If-Interactive
