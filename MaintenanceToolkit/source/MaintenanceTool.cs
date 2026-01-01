@@ -54,9 +54,11 @@ namespace SystemMaintenance
         private bool isDarkMode = false;
         private bool isBatchMode = false;
         private Process currentProcess;
+        private int scriptRunning = 0;
         private object processLock = new object();
         private const string SETTINGS_FILE = "settings.cfg";
         private CancellationTokenSource batchCts;
+        private string tempScriptDir = null;
 
         // Colors (Modern Flat Theme)
         private Color colSidebarDark = Color.FromArgb(37, 37, 38);
@@ -65,6 +67,8 @@ namespace SystemMaintenance
         private Color colContentLight = Color.White;
         private Color colCardDark = Color.FromArgb(45, 45, 48);
         private Color colCardLight = Color.WhiteSmoke;
+        private Color colCardHoverDark = Color.FromArgb(65, 65, 68);
+        private Color colCardHoverLight = Color.FromArgb(230, 230, 230);
         private Color colAccent = Color.FromArgb(0, 122, 204);
         private Color colTextDark = Color.FromArgb(241, 241, 241);
         private Color colTextLight = Color.FromArgb(30, 30, 30);
@@ -92,6 +96,39 @@ namespace SystemMaintenance
             InitializeLayout();
             ApplyTheme();
             LoadCategory("DASHBOARD");
+
+            this.FormClosing += OnFormClosing;
+        }
+
+        private void OnFormClosing(object sender, FormClosingEventArgs e)
+        {
+            // Dispose all cached script cards to prevent memory leaks
+            foreach (var card in scriptCardCache.Values)
+            {
+                card.Dispose();
+            }
+            scriptCardCache.Clear();
+
+            // Cleanup temporary script directory
+            if (tempScriptDir != null && Directory.Exists(tempScriptDir))
+            {
+                try {
+                    lock (processLock)
+                    {
+                        if (currentProcess != null && !currentProcess.HasExited)
+                        {
+                            try { currentProcess.Kill(); } catch { }
+                            currentProcess = null;
+                            Interlocked.Exchange(ref scriptRunning, 0);
+                        }
+                    }
+
+                    Directory.Delete(tempScriptDir, true);
+                    tempScriptDir = null;
+                } catch (Exception ex) {
+                    Debug.WriteLine("Failed to cleanup temp dir: " + ex.Message);
+                }
+            }
         }
 
         private void InitializeLayout()
@@ -120,11 +157,22 @@ namespace SystemMaintenance
             sidebarHeader.Controls.Add(lblTitle);
             sidebarPanel.Controls.Add(sidebarHeader);
 
-            // Categories
-            string[] cats = { "DASHBOARD", "FAVORITES", "CLEAN", "REPAIR", "HARDWARE", "NETWORK", "SECURITY", "UTILS", "HELP" };
-            foreach (var cat in cats)
+            // Categories with Icons
+            var cats = new Dictionary<string, string> {
+                {"DASHBOARD", "🏠 Dashboard"},
+                {"FAVORITES", "★ Favorites"},
+                {"CLEAN", "🧹 Clean"},
+                {"REPAIR", "🔧 Repair"},
+                {"HARDWARE", "💻 Hardware"},
+                {"NETWORK", "🌐 Network"},
+                {"SECURITY", "🛡 Security"},
+                {"UTILS", "🧰 Utils"},
+                {"HELP", "❓ Help"}
+            };
+
+            foreach (var kvp in cats)
             {
-                Button btn = CreateSidebarButton(cat);
+                Button btn = CreateSidebarButton(kvp.Key, kvp.Value);
                 sidebarPanel.Controls.Add(btn);
                 sidebarButtons.Add(btn);
             }
@@ -230,7 +278,7 @@ namespace SystemMaintenance
         }
 
         // --- Layout Helpers ---
-        private Button CreateSidebarButton(string text)
+        private Button CreateSidebarButton(string tag, string text)
         {
             Button btn = new Button();
             btn.Text = text;
@@ -241,7 +289,7 @@ namespace SystemMaintenance
             btn.TextAlign = ContentAlignment.MiddleLeft;
             btn.Padding = new Padding(15, 0, 0, 0);
             btn.Font = new Font("Segoe UI", 10F, FontStyle.Regular);
-            btn.Tag = text;
+            btn.Tag = tag;
             btn.Cursor = Cursors.Hand;
             btn.AccessibleName = text;
             btn.AccessibleRole = AccessibleRole.PushButton;
@@ -275,8 +323,15 @@ namespace SystemMaintenance
             // Update Sidebar UI
             foreach(var b in sidebarButtons) {
                 bool isActive = (string)b.Tag == category;
-                b.BackColor = isActive ? (isDarkMode ? Color.FromArgb(60,60,60) : Color.LightGray) : Color.Transparent;
-                b.Font = new Font("Segoe UI", 10F, isActive ? FontStyle.Bold : FontStyle.Regular);
+                if (isActive) {
+                    b.BackColor = isDarkMode ? Color.FromArgb(60,60,60) : Color.LightGray;
+                    b.ForeColor = colAccent; // Highlight text
+                    b.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
+                } else {
+                    b.BackColor = Color.Transparent;
+                    b.ForeColor = isDarkMode ? Color.White : Color.Black;
+                    b.Font = new Font("Segoe UI", 10F, FontStyle.Regular);
+                }
             }
 
             if (category == "DASHBOARD") RenderDashboard();
@@ -300,16 +355,31 @@ namespace SystemMaintenance
             if (dashboardPanel == null) {
                 dashboardPanel = new Panel { Width = Math.Max(100, scriptsPanel.Width - 40), AutoSize = true };
 
-                Label lblHeader = new Label { Text = "System Overview", Font = new Font("Segoe UI", 16F, FontStyle.Bold), AutoSize = true, Location = new Point(10, 10), ForeColor = isDarkMode ? colTextDark : colTextLight, Tag = "THEMEABLE" };
+                Label lblHeader = new Label { Text = "System Overview", Font = new Font("Segoe UI", 16F, FontStyle.Bold), AutoSize = true, Location = new Point(0, 0), ForeColor = isDarkMode ? colTextDark : colTextLight, Tag = "THEMEABLE" };
                 dashboardPanel.Controls.Add(lblHeader);
 
-                Label lblInfo = new Label { Text = GetDetailedSystemInfo(), Font = new Font("Consolas", 10F), AutoSize = true, Location = new Point(10, 50), ForeColor = isDarkMode ? Color.LightGray : Color.DarkSlateGray, Tag = "THEMEABLE_INFO" };
-                dashboardPanel.Controls.Add(lblInfo);
+                // System Info Card
+                Panel infoCard = new Panel {
+                    Location = new Point(0, 40),
+                    Size = new Size(dashboardPanel.Width, 150),
+                    BackColor = isDarkMode ? colCardDark : colCardLight,
+                    Tag = "THEMEABLE_CARD"
+                };
+                Label lblInfo = new Label {
+                    Text = GetDetailedSystemInfo(),
+                    Font = new Font("Consolas", 10F),
+                    AutoSize = true,
+                    Location = new Point(10, 10),
+                    ForeColor = isDarkMode ? colTextDark : colTextLight, // Better contrast in card
+                    Tag = "THEMEABLE"
+                };
+                infoCard.Controls.Add(lblInfo);
+                dashboardPanel.Controls.Add(infoCard);
 
-                Label lblQuick = new Label { Text = "Quick Actions", Font = new Font("Segoe UI", 14F, FontStyle.Bold), AutoSize = true, Location = new Point(10, lblInfo.Bottom + 20), ForeColor = isDarkMode ? colTextDark : colTextLight, Tag = "THEMEABLE" };
+                Label lblQuick = new Label { Text = "Quick Actions", Font = new Font("Segoe UI", 14F, FontStyle.Bold), AutoSize = true, Location = new Point(0, infoCard.Bottom + 20), ForeColor = isDarkMode ? colTextDark : colTextLight, Tag = "THEMEABLE" };
                 dashboardPanel.Controls.Add(lblQuick);
 
-                FlowLayoutPanel quickFlow = new FlowLayoutPanel { Location = new Point(10, lblQuick.Bottom + 10), Width = dashboardPanel.Width, Height = 200, AutoScroll = false, Tag = "QUICK_FLOW" };
+                FlowLayoutPanel quickFlow = new FlowLayoutPanel { Location = new Point(0, lblQuick.Bottom + 10), Width = dashboardPanel.Width, Height = 200, AutoScroll = false, Tag = "QUICK_FLOW" };
 
                 string[] quickScripts = { "2_InstallCleaningTools.ps1", "9_DiskHealthCheck.ps1", "1_CreateRestorePoint.ps1", "6_OptimizeAndUpdate.ps1" };
                 foreach(var s in quickScripts) {
@@ -343,18 +413,56 @@ namespace SystemMaintenance
                 if (!File.Exists(helpPath)) helpPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "HELP.md");
                 if (!File.Exists(helpPath)) helpPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "MaintenanceToolkit", "HELP.md");
 
-                string content = File.Exists(helpPath) ? File.ReadAllText(helpPath) : "# Error\nHelp file not found.";
+                string content = null;
+                if (File.Exists(helpPath)) content = File.ReadAllText(helpPath);
+
+                // Fallback to embedded resource
+                if (content == null) {
+                    try {
+                        var assembly = System.Reflection.Assembly.GetExecutingAssembly();
+                        using (Stream stream = assembly.GetManifestResourceStream("HELP.md")) {
+                            if (stream != null) {
+                                using (StreamReader reader = new StreamReader(stream)) {
+                                    content = reader.ReadToEnd();
+                                }
+                            }
+                        }
+                    } catch {}
+                }
+
+                if (content == null) content = "# Error\nHelp file not found.";
 
                 // Basic Markdown to HTML
                 string html = "<html><body style='font-family:Segoe UI; padding:20px; color:" + (isDarkMode ? "#EEE" : "#222") + "; background-color:" + (isDarkMode ? "#222" : "#FFF") + "'>";
-                foreach(var line in content.Split('\n')) {
+                bool inList = false;
+
+                foreach (var line in content.Split('\n')) {
                     string l = line.Trim();
-                    if (l.StartsWith("# ")) html += "<h1>" + l.Substring(2) + "</h1>";
-                    else if (l.StartsWith("## ")) html += "<h2>" + l.Substring(3) + "</h2>";
-                    else if (l.StartsWith("### ")) html += "<h3>" + l.Substring(4) + "</h3>";
-                    else if (l.StartsWith("- ")) html += "<li>" + l.Substring(2) + "</li>";
-                    else if (l.Length > 0) html += "<p>" + l + "</p>";
+                    string safe = System.Net.WebUtility.HtmlEncode(l);
+
+                    if (l.StartsWith("# ")) {
+                        if (inList) { html += "</ul>"; inList = false; }
+                        html += "<h1>" + System.Net.WebUtility.HtmlEncode(l.Substring(2)) + "</h1>";
+                    }
+                    else if (l.StartsWith("## ")) {
+                        if (inList) { html += "</ul>"; inList = false; }
+                        html += "<h2>" + System.Net.WebUtility.HtmlEncode(l.Substring(3)) + "</h2>";
+                    }
+                    else if (l.StartsWith("### ")) {
+                        if (inList) { html += "</ul>"; inList = false; }
+                        html += "<h3>" + System.Net.WebUtility.HtmlEncode(l.Substring(4)) + "</h3>";
+                    }
+                    else if (l.StartsWith("- ")) {
+                        if (!inList) { html += "<ul>"; inList = true; }
+                        html += "<li>" + System.Net.WebUtility.HtmlEncode(l.Substring(2)) + "</li>";
+                    }
+                    else if (l.Length > 0) {
+                        if (inList) { html += "</ul>"; inList = false; }
+                        html += "<p>" + safe + "</p>";
+                    }
                 }
+
+                if (inList) html += "</ul>";
                 html += "</body></html>";
 
                 WebBrowser web = new WebBrowser { Dock = DockStyle.Fill, MinimumSize = new Size(20,20), Tag = "WEB_HELP" };
@@ -416,6 +524,30 @@ namespace SystemMaintenance
             card.Controls.Add(chkBatch);
             card.Controls.Add(lblFav);
 
+            // Events for interactivity
+            EventHandler hoverEnter = (s, e) => card.BackColor = isDarkMode ? colCardHoverDark : colCardHoverLight;
+            EventHandler hoverLeave = (s, e) => card.BackColor = isDarkMode ? colCardDark : colCardLight;
+            EventHandler doubleClick = (s, e) => {
+                if (!isBatchMode) {
+                     if (script.IsDestructive && MessageBox.Show(string.Format("Warning: {0} is destructive.\nProceed?", script.DisplayName), "Warning", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.No) return;
+                     RunScript(script);
+                }
+            };
+
+            card.MouseEnter += hoverEnter;
+            card.MouseLeave += hoverLeave;
+            card.DoubleClick += doubleClick;
+
+            foreach (Control c in card.Controls)
+            {
+                if (!(c is Button) && !(c is CheckBox)) // Don't override interactive controls
+                {
+                    c.MouseEnter += hoverEnter;
+                    c.MouseLeave += hoverLeave;
+                    c.DoubleClick += doubleClick;
+                }
+            }
+
             return card;
         }
 
@@ -425,8 +557,17 @@ namespace SystemMaintenance
             else favoriteScripts.Add(script.FileName);
             SaveSettings();
 
-            // If currently viewing favorites, we need to refresh the view immediately
-            // But if we use cached cards, removing it from view is enough.
+            // Rebuild favorites category from the updated set
+            categories["FAVORITES"].Clear();
+            foreach(var kvp in categories.Where(k => k.Key != "FAVORITES"))
+            {
+                foreach(var s in kvp.Value)
+                {
+                    if (favoriteScripts.Contains(s.FileName))
+                        categories["FAVORITES"].Add(s);
+                }
+            }
+
             if (currentCategory == "FAVORITES") LoadCategory("FAVORITES");
         }
 
@@ -434,7 +575,11 @@ namespace SystemMaintenance
 
         private void RunScript(ScriptInfo script)
         {
-            if (currentProcess != null && !currentProcess.HasExited) { MessageBox.Show("A script is already running."); return; }
+            if (Interlocked.CompareExchange(ref scriptRunning, 1, 0) != 0)
+            {
+                MessageBox.Show("A script is already running.");
+                return;
+            }
 
             Log("Starting: " + script.DisplayName);
             statusLabel.Text = "Running: " + script.DisplayName;
@@ -442,22 +587,102 @@ namespace SystemMaintenance
             btnCancel.Visible = !script.IsInteractive;
 
             Task.Run(() => {
-                ExecuteScriptInternal(script);
-                Invoke((Action)(() => {
-                    Log("Finished: " + script.DisplayName);
-                    statusLabel.Text = "Ready";
-                    progressBar.Visible = false;
-                    btnCancel.Visible = false;
-                }));
+                try {
+                    ExecuteScriptInternal(script);
+                } finally {
+                    if (!IsDisposed && IsHandleCreated) {
+                        BeginInvoke((Action)(() => {
+                            Log("Finished: " + script.DisplayName);
+                            statusLabel.Text = "Ready";
+                            progressBar.Visible = false;
+                            btnCancel.Visible = false;
+                        }));
+                    }
+                    Interlocked.Exchange(ref scriptRunning, 0);
+                }
             });
+        }
+
+        private void ExtractEmbeddedScripts()
+        {
+            if (tempScriptDir != null) return;
+
+            try {
+                tempScriptDir = Path.Combine(Path.GetTempPath(), "SysMaintToolkit_" + Guid.NewGuid().ToString("N").Substring(0, 8));
+                Directory.CreateDirectory(tempScriptDir);
+
+                var assembly = System.Reflection.Assembly.GetExecutingAssembly();
+                foreach (string resourceName in assembly.GetManifestResourceNames())
+                {
+                    if (resourceName.StartsWith("scripts/"))
+                    {
+                        // Resource name is like "scripts/lib/Common.ps1"
+                        // We map this to tempScriptDir/lib/Common.ps1
+                        // Note: fileName in resource is forward slash separated as we defined in BuildTool
+
+                        string relPath = resourceName.Substring("scripts/".Length);
+                        string fullPath = Path.Combine(tempScriptDir, relPath.Replace("/", Path.DirectorySeparatorChar.ToString()));
+
+                        string dir = Path.GetDirectoryName(fullPath);
+                        if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+
+                        using (Stream stream = assembly.GetManifestResourceStream(resourceName))
+                        {
+                            if (stream == null) {
+                                if (!IsDisposed && IsHandleCreated)
+                                    BeginInvoke((Action)(() => Log("Error: Missing resource stream for " + resourceName)));
+                                else
+                                    Debug.WriteLine("Error: Missing resource stream for " + resourceName);
+                                continue;
+                            }
+                            using (FileStream fileStream = new FileStream(fullPath, FileMode.Create))
+                            {
+                                stream.CopyTo(fileStream);
+                            }
+                        }
+                    }
+                }
+            } catch (Exception ex) {
+                Invoke((Action)(() => Log("Error extracting embedded scripts: " + ex.Message)));
+            }
+        }
+
+        private string FindScriptPath(string fileName)
+        {
+            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+
+            // Priority 1: Local scripts folder (Development / portable extraction)
+            // Restricted search order to prevent untrusted path execution risks.
+            // We only search specifically adjacent 'scripts' or 'MaintenanceToolkit/scripts' folders.
+            string[] localPaths = new string[] {
+                Path.Combine(baseDir, "scripts", fileName),
+                Path.Combine(baseDir, "MaintenanceToolkit", "scripts", fileName)
+            };
+
+            foreach (string p in localPaths)
+            {
+                if (File.Exists(p)) return p;
+            }
+
+            // Priority 2: Embedded Scripts (Standalone EXE)
+            ExtractEmbeddedScripts();
+            if (tempScriptDir != null)
+            {
+                string tempPath = Path.Combine(tempScriptDir, fileName);
+                if (File.Exists(tempPath)) return tempPath;
+            }
+
+            return null;
         }
 
         private void ExecuteScriptInternal(ScriptInfo script)
         {
-            string path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "scripts", script.FileName);
-            if (!File.Exists(path)) path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, script.FileName); // fallback
+            string path = FindScriptPath(script.FileName);
 
-            if (!File.Exists(path)) { Invoke((Action)(() => Log("Error: Script file not found at " + path))); return; }
+            if (path == null) {
+                Invoke((Action)(() => Log("Error: Script file not found: " + script.FileName)));
+                return;
+            }
 
             try {
                 ProcessStartInfo psi = new ProcessStartInfo("powershell.exe",
@@ -502,18 +727,32 @@ namespace SystemMaintenance
             }
             if (queue.Count == 0) return;
 
+            if (MessageBox.Show(string.Format("Ready to execute {0} scripts?\nThis process will run sequentially.", queue.Count), "Confirm Batch Run", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+                return;
+
+            if (Interlocked.CompareExchange(ref scriptRunning, 1, 0) != 0)
+            {
+                MessageBox.Show("A script is already running.");
+                return;
+            }
+
             batchCts = new CancellationTokenSource();
             btnRunBatch.Enabled = false;
             progressBar.Visible = true;
             btnCancel.Visible = true;
 
             try {
+                progressBar.Style = ProgressBarStyle.Continuous;
+                progressBar.Maximum = queue.Count;
+                progressBar.Value = 0;
+
                 int i=0;
                 foreach(var s in queue) {
                      if (batchCts.IsCancellationRequested) break;
                      statusLabel.Text = string.Format("Batch: ({0}/{1}) {2}", i+1, queue.Count, s.DisplayName);
                      await Task.Run(() => ExecuteScriptInternal(s));
                      i++;
+                     progressBar.Value = i;
                 }
                 Log("Batch Execution Completed.");
             } finally {
@@ -521,6 +760,8 @@ namespace SystemMaintenance
                 progressBar.Visible = false;
                 btnCancel.Visible = false;
                 statusLabel.Text = "Ready";
+                progressBar.Style = ProgressBarStyle.Marquee; // Reset for single runs
+                Interlocked.Exchange(ref scriptRunning, 0);
             }
         }
 
@@ -528,7 +769,14 @@ namespace SystemMaintenance
             if (batchCts != null) batchCts.Cancel();
             lock(processLock) {
                 if (currentProcess != null && !currentProcess.HasExited) {
-                    try { currentProcess.Kill(); Log("Process cancelled by user."); } catch {}
+                    try {
+                        currentProcess.Kill();
+                        Log("Process cancelled by user.");
+                        currentProcess = null;
+                        Interlocked.Exchange(ref scriptRunning, 0);
+                    } catch (Exception ex) {
+                        Log("Error cancelling process: " + ex.Message);
+                    }
                 }
             }
         }
@@ -537,13 +785,13 @@ namespace SystemMaintenance
         private void Log(string msg) {
             if (txtLog.InvokeRequired) { txtLog.Invoke((Action)(()=>Log(msg))); return; }
             txtLog.AppendText(string.Format("[{0}] {1}\r\n", DateTime.Now.ToShortTimeString(), msg));
+            txtLog.ScrollToCaret();
         }
 
         private void TxtSearch_TextChanged(object sender, EventArgs e) {
-            string q = txtSearch.Text.Trim().ToLower(); // Trimmed
+            string q = txtSearch.Text.Trim().ToLower();
             if (string.IsNullOrWhiteSpace(q)) {
-                 if (currentCategory == "SEARCH") LoadCategory("DASHBOARD");
-                 else LoadCategory(currentCategory);
+                 LoadCategory(currentCategory);
                  return;
             }
 

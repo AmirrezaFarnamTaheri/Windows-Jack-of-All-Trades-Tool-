@@ -23,11 +23,41 @@ if (-not $CSC) {
 
 Write-Host "Using Compiler: $($CSC.FullName)" -ForegroundColor DarkGray
 
-# Compile Command
-# We link Windows Forms, Drawing, System.Management (for WMI checks), and the Manifest
-$BuildCmd = "& '$($CSC.FullName)' /target:winexe /out:'$OutputFile' /win32manifest:'$ManifestFile' /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Management.dll '$SourceFile'"
+# Collect Build Arguments
+$BuildArgs = @(
+    "/target:winexe",
+    "/out:$OutputFile",
+    "/win32manifest:$ManifestFile",
+    "/r:System.Windows.Forms.dll",
+    "/r:System.Drawing.dll",
+    "/r:System.Management.dll"
+)
 
-Invoke-Expression $BuildCmd
+# Collect Embedded Resources (Scripts)
+$ScriptDir = Join-Path $PSScriptRoot "scripts"
+if (Test-Path $ScriptDir) {
+    Get-ChildItem -Path $ScriptDir -Recurse -File | ForEach-Object {
+        # Calculate relative path (e.g. scripts/lib/Common.ps1)
+        # We need to preserve the folder structure in the resource name
+        $RelPath = $_.FullName.Substring($ScriptDir.Length + 1).Replace("\", "/")
+        $ResName = "scripts/$RelPath"
+        $BuildArgs += "/resource:$($_.FullName),$ResName"
+        Write-Host "Embedding: $ResName" -ForegroundColor Gray
+    }
+}
+
+# Embed HELP.md
+$HelpFile = Join-Path $PSScriptRoot "HELP.md"
+if (Test-Path $HelpFile) {
+    $BuildArgs += "/resource:$HelpFile,HELP.md"
+    Write-Host "Embedding: HELP.md" -ForegroundColor Gray
+}
+
+# Add Source File
+$BuildArgs += $SourceFile
+
+# Compile Command
+& $CSC.FullName @BuildArgs
 
 if (Test-Path $OutputFile) {
     Write-Host "`nSUCCESS! Application created: $OutputFile" -ForegroundColor Green
