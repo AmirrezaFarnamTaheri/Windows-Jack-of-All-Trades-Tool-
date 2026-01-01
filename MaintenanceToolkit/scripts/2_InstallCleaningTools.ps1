@@ -13,10 +13,18 @@ if (-not (Test-IsWingetAvailable)) {
 
 try {
     Write-Section "Installing Malwarebytes"
-    winget install --id Malwarebytes.Malwarebytes -e --silent --accept-package-agreements --accept-source-agreements
+    if (Get-Command "mbam.exe" -ErrorAction SilentlyContinue) {
+        Show-Info "Malwarebytes is already installed."
+    } else {
+        winget install --id Malwarebytes.Malwarebytes -e --silent --accept-package-agreements --accept-source-agreements
+    }
 
     Write-Section "Installing BleachBit"
-    winget install --id BleachBit.BleachBit -e --silent --accept-package-agreements --accept-source-agreements
+    if (Get-Command "bleachbit_console.exe" -ErrorAction SilentlyContinue) {
+        Show-Info "BleachBit is already installed."
+    } else {
+        winget install --id BleachBit.BleachBit -e --silent --accept-package-agreements --accept-source-agreements
+    }
 
     Write-Section "Installation Complete"
     Show-Success "Tools installed successfully."

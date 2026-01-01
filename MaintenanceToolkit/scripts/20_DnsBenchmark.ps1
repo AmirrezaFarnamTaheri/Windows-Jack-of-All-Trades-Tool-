@@ -25,13 +25,17 @@ foreach ($name in $targets.Keys) {
         $success = 0
 
         for ($i=1; $i -le $count; $i++) {
-            $result = $null
-            $time = Measure-Command {
-                $result = Resolve-DnsName -Name "google.com" -Server $ip -Type A -ErrorAction SilentlyContinue
-            }
-            if ($null -ne $result) {
-                $totalTime += $time.TotalMilliseconds
-                $success++
+            $sw = [System.Diagnostics.Stopwatch]::StartNew()
+            try {
+                $result = Resolve-DnsName -Name "google.com" -Server $ip -Type A -ErrorAction Stop
+                $sw.Stop()
+
+                if ($result) {
+                    $totalTime += $sw.Elapsed.TotalMilliseconds
+                    $success++
+                }
+            } catch {
+                $sw.Stop()
             }
         }
 

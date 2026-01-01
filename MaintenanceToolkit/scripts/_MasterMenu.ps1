@@ -78,6 +78,12 @@ function Show-SubMenu ($Category) {
             Write-Host "52. Read Chkdsk Logs"
             Write-Host "64. Check Virtualization (VT-x)"
             Write-Host "65. Disable USB Suspend (Fix Lag)"
+            Write-Host "66. Hardware Monitor"
+            Write-Host "67. Wifi Scanner"
+            Write-Host "68. SSD Trim Optimization"
+            Write-Host "72. Reset Bluetooth"
+            Write-Host "84. Driver Version Audit"
+            Write-Host "85. Restore Point Manager"
         }
         "NETWORK" {
             Write-Section "NETWORK & INTERNET"
@@ -88,6 +94,11 @@ function Show-SubMenu ($Category) {
             Write-Host "47. Network Heartbeat Monitor"
             Write-Host "53. Optimize Internet Speed"
             Write-Host "58. Block Website (Hosts)"
+            Write-Host "69. Wireless Report"
+            Write-Host "71. Firewall Audit"
+            Write-Host "79. Process Connections"
+            Write-Host "80. Flush DNS Cache"
+            Write-Host "83. Network Speed Test"
         }
         "SECURITY" {
             Write-Section "SECURITY & PRIVACY"
@@ -101,6 +112,7 @@ function Show-SubMenu ($Category) {
             Write-Host "48. Audit User Accounts"
             Write-Host "49. Securely Wipe File (DoD)"
             Write-Host "59. Panic Button (Hide All)"
+            Write-Host "78. Login History Audit"
         }
         "UTILS" {
             Write-Section "UTILITIES & TOOLS"
@@ -120,6 +132,14 @@ function Show-SubMenu ($Category) {
             Write-Host "60. Emergency Restart"
             Write-Host "61. Check Activation Status"
             Write-Host "63. Install Essential Apps"
+            Write-Host "70. Export System Spec"
+            Write-Host "73. Startup Manager"
+            Write-Host "74. Update History"
+            Write-Host "75. Clear Browser Cache"
+            Write-Host "76. Stability Score"
+            Write-Host "77. Reset Windows Search"
+            Write-Host "81. Analyze Disk Usage"
+            Write-Host "82. Export Event Logs"
         }
     }
     Write-Host "------------------------------------------------------" -ForegroundColor DarkGray
