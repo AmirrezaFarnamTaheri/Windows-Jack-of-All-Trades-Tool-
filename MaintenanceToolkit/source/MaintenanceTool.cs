@@ -86,6 +86,7 @@ namespace SystemMaintenance
             this.Icon = SystemIcons.Shield;
             this.Font = new Font("Segoe UI", 9F, FontStyle.Regular);
             this.DoubleBuffered = true;
+            this.KeyPreview = true; // For shortcuts
 
             // Check Admin
             if (!IsAdministrator())
@@ -98,6 +99,16 @@ namespace SystemMaintenance
             LoadCategory("DASHBOARD");
 
             this.FormClosing += OnFormClosing;
+            this.KeyDown += OnKeyDown;
+        }
+
+        private void OnKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Control && e.KeyCode == Keys.F)
+            {
+                txtSearch.Focus();
+                e.Handled = true;
+            }
         }
 
         private void OnFormClosing(object sender, FormClosingEventArgs e)
@@ -1050,6 +1061,8 @@ namespace SystemMaintenance
             categories["HARDWARE"].Add(new ScriptInfo("64_CheckVirtualization.ps1", "Check Virtualization", "Checks if VT-x/AMD-V is enabled."));
             categories["HARDWARE"].Add(new ScriptInfo("65_DisableUsbSuspend.ps1", "Disable USB Suspend", "Fixes USB lag issues."));
             categories["HARDWARE"].Add(new ScriptInfo("66_HardwareMonitor.ps1", "Hardware Monitor", "Real-time CPU/RAM/Disk monitor.", true));
+            categories["HARDWARE"].Add(new ScriptInfo("68_SSDTrim.ps1", "SSD Trim Optimization", "Forces a re-trim of the C: drive."));
+            categories["HARDWARE"].Add(new ScriptInfo("72_ResetBluetooth.ps1", "Reset Bluetooth", "Restarts Bluetooth services."));
 
             // NETWORK
             categories["NETWORK"].Add(new ScriptInfo("7_NetworkReset.ps1", "Network Reset", "Flushes DNS and resets IP/Winsock."));
@@ -1060,6 +1073,8 @@ namespace SystemMaintenance
             categories["NETWORK"].Add(new ScriptInfo("53_OptimizeNetwork.ps1", "Optimize Internet", "Tunes TCP receive window."));
             categories["NETWORK"].Add(new ScriptInfo("58_BlockWebsite.ps1", "Block Website", "Blocks a domain via Hosts file.", true));
             categories["NETWORK"].Add(new ScriptInfo("67_WifiScanner.ps1", "Wi-Fi Scanner", "Scans for nearby Wi-Fi networks.", true));
+            categories["NETWORK"].Add(new ScriptInfo("69_WlanReport.ps1", "Wireless Report", "Generates a detailed HTML Wi-Fi report."));
+            categories["NETWORK"].Add(new ScriptInfo("71_FirewallAudit.ps1", "Firewall Audit", "Checks firewall profiles and rules."));
 
             // SECURITY
             categories["SECURITY"].Add(new ScriptInfo("8_PrivacyHardening.ps1", "Privacy Hardening", "Disables telemetry and ad ID."));
@@ -1090,6 +1105,7 @@ namespace SystemMaintenance
             categories["UTILS"].Add(new ScriptInfo("60_EmergencyRestart.ps1", "Emergency Restart", "Forces immediate reboot.", true, true));
             categories["UTILS"].Add(new ScriptInfo("61_CheckActivation.ps1", "Check Activation", "Checks license expiry."));
             categories["UTILS"].Add(new ScriptInfo("63_InstallEssentials.ps1", "Install Essentials", "Installs Chrome, VLC, 7Zip, etc."));
+            categories["UTILS"].Add(new ScriptInfo("70_DetailedSysInfo.ps1", "Export System Spec", "Dumps full system info to a text file."));
 
             // Populate Favorites
             foreach(var kvp in categories) {
