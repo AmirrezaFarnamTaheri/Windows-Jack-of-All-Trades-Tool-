@@ -452,12 +452,33 @@ namespace SystemMaintenance
             });
         }
 
+        private string FindScriptPath(string fileName)
+        {
+            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            // Search order: scripts/, MaintenanceToolkit/scripts/, ../scripts/, ../../scripts/, ./
+            string[] searchPaths = new string[] {
+                Path.Combine(baseDir, "scripts", fileName),
+                Path.Combine(baseDir, "MaintenanceToolkit", "scripts", fileName),
+                Path.Combine(baseDir, "..", "scripts", fileName),
+                Path.Combine(baseDir, "..", "..", "scripts", fileName),
+                Path.Combine(baseDir, fileName)
+            };
+
+            foreach (string p in searchPaths)
+            {
+                if (File.Exists(p)) return p;
+            }
+            return null;
+        }
+
         private void ExecuteScriptInternal(ScriptInfo script)
         {
-            string path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "scripts", script.FileName);
-            if (!File.Exists(path)) path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, script.FileName); // fallback
+            string path = FindScriptPath(script.FileName);
 
-            if (!File.Exists(path)) { Invoke((Action)(() => Log("Error: Script file not found at " + path))); return; }
+            if (path == null) {
+                Invoke((Action)(() => Log("Error: Script file not found: " + script.FileName)));
+                return;
+            }
 
             try {
                 ProcessStartInfo psi = new ProcessStartInfo("powershell.exe",
