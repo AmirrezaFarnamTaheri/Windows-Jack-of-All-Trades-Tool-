@@ -690,10 +690,9 @@ namespace SystemMaintenance
 
                 psi.UseShellExecute = script.IsInteractive;
                 psi.CreateNoWindow = !script.IsInteractive;
-                psi.StandardOutputEncoding = Encoding.UTF8;
-                psi.StandardErrorEncoding = Encoding.UTF8;
-
                 if (!script.IsInteractive) {
+                    psi.StandardOutputEncoding = Encoding.UTF8;
+                    psi.StandardErrorEncoding = Encoding.UTF8;
                     psi.RedirectStandardOutput = true;
                     psi.RedirectStandardError = true;
                 }
@@ -926,27 +925,68 @@ namespace SystemMaintenance
         private string GetDetailedSystemInfo()
         {
             StringBuilder sb = new StringBuilder();
-            sb.AppendLine("OS: " + Environment.OSVersion.ToString());
+            sb.AppendLine("OS: " + GetOSFriendlyName());
             sb.AppendLine("Machine: " + Environment.MachineName);
             sb.AppendLine("User: " + Environment.UserName);
+            sb.AppendLine("Uptime: " + GetUptime());
 
             try {
+                using (var searcher = new ManagementObjectSearcher("SELECT Name, NumberOfCores, NumberOfLogicalProcessors FROM Win32_Processor"))
+                {
+                    foreach (var item in searcher.Get())
+                    {
+                        sb.AppendLine("CPU: " + item["Name"].ToString());
+                        sb.AppendLine(string.Format("Cores: {0} | Threads: {1}", item["NumberOfCores"], item["NumberOfLogicalProcessors"]));
+                    }
+                }
+
                 using (var searcher = new ManagementObjectSearcher("SELECT TotalVisibleMemorySize, FreePhysicalMemory FROM Win32_OperatingSystem"))
                 {
                     foreach (var item in searcher.Get())
                     {
                         long totalRam = Convert.ToInt64(item["TotalVisibleMemorySize"]) / 1024;
                         long freeRam = Convert.ToInt64(item["FreePhysicalMemory"]) / 1024;
-                        sb.AppendLine(string.Format("RAM: {0} MB Free / {1} MB Total", freeRam, totalRam));
+                        double percentFree = (double)freeRam / totalRam * 100;
+                        sb.AppendLine(string.Format("RAM: {0} MB Free / {1} MB Total ({2:F1}% Free)", freeRam, totalRam, percentFree));
                     }
                 }
+
+                sb.AppendLine("--------------------------------------------------");
                 foreach (var drive in DriveInfo.GetDrives()) {
                     if (drive.IsReady && drive.DriveType == DriveType.Fixed) {
-                         sb.AppendLine(string.Format("Disk ({0}): {1} GB Free / {2} GB Total", drive.Name, drive.TotalFreeSpace / 1073741824, drive.TotalSize / 1073741824));
+                        long freeGb = drive.TotalFreeSpace / 1073741824;
+                        long totalGb = drive.TotalSize / 1073741824;
+                        double percentFree = (double)drive.TotalFreeSpace / drive.TotalSize * 100;
+                        sb.AppendLine(string.Format("Disk ({0}): {1} GB Free / {2} GB Total ({3:F1}% Free)", drive.Name, freeGb, totalGb, percentFree));
                     }
                 }
-            } catch {}
+            } catch (Exception ex) {
+                sb.AppendLine("Error gathering info: " + ex.Message);
+            }
             return sb.ToString();
+        }
+
+        private string GetOSFriendlyName()
+        {
+            try {
+                using (var searcher = new ManagementObjectSearcher("SELECT Caption FROM Win32_OperatingSystem"))
+                {
+                    foreach (var item in searcher.Get()) return item["Caption"].ToString();
+                }
+            } catch {}
+            return Environment.OSVersion.ToString();
+        }
+
+        private string GetUptime()
+        {
+            try {
+                using (var uptime = new PerformanceCounter("System", "System Up Time"))
+                {
+                    uptime.NextValue();
+                    TimeSpan ts = TimeSpan.FromSeconds(uptime.NextValue());
+                    return string.Format("{0}d {1}h {2}m", ts.Days, ts.Hours, ts.Minutes);
+                }
+            } catch { return "Unknown"; }
         }
 
         private void InitializeData()

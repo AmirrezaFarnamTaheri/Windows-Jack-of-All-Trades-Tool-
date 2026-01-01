@@ -15,9 +15,29 @@ function Write-Header ($Title) {
     Write-Host "======================================================" -ForegroundColor Cyan
 }
 
+function Write-Section ($Title) {
+    Write-Host "`n--- $Title ---" -ForegroundColor Yellow
+}
+
 function Write-Log ($Message, $Color="White", $Level="INFO") {
     $TimeStamp = Get-Date -Format "HH:mm:ss"
     Write-Host "[$TimeStamp] $Message" -ForegroundColor $Color
+}
+
+function Show-Success ($Message) {
+    Write-Log "[SUCCESS] $Message" "Green"
+}
+
+function Show-Error ($Message) {
+    Write-Log "[ERROR] $Message" "Red"
+}
+
+function Get-SystemSummary {
+    $os = Get-CimInstance Win32_OperatingSystem
+    $cpu = Get-CimInstance Win32_Processor
+    Write-Log "OS: $($os.Caption)" "Gray"
+    Write-Log "CPU: $($cpu.Name)" "Gray"
+    Write-Log "Free RAM: $([math]::Round($os.FreePhysicalMemory/1024,0)) MB" "Gray"
 }
 
 function Pause-If-Interactive {
@@ -66,7 +86,7 @@ function Assert-SystemRestoreEnabled {
 
 function Backup-RegistryKey ($KeyPath, $BackupDir="$env:USERPROFILE\Desktop\RegBackups") {
     if ([string]::IsNullOrWhiteSpace($KeyPath)) {
-        Write-Log "Error: No registry key path provided for backup." "Red"
+        Show-Error "No registry key path provided for backup."
         return
     }
 
@@ -75,7 +95,7 @@ function Backup-RegistryKey ($KeyPath, $BackupDir="$env:USERPROFILE\Desktop\RegB
         $Name = ($KeyPath -split "\\")[-1]
         $File = "$BackupDir\$Name-$(Get-Date -Format 'yyyyMMdd-HHmm').reg"
         Start-Process "reg.exe" -ArgumentList "export `"$KeyPath`" `"$File`" /y" -Wait -NoNewWindow
-        Write-Log "Backed up registry key '$Name' to $File" "Gray"
+        Show-Success "Backed up registry key '$Name' to $File"
     } else {
         Write-Log "Warning: Registry key '$KeyPath' not found. Skipping backup." "Yellow"
     }
@@ -114,7 +134,7 @@ function Set-RegKey {
         New-ItemProperty -Path $Path -Name $Name -Value $Value -PropertyType $Type -Force -ErrorAction Stop | Out-Null
         Write-Log "Registry Set: $Path\$Name = $Value" "Gray"
     } catch {
-        Write-Log "Failed to set registry key: $Path\$Name. Error: $($_.Exception.Message)" "Red"
+        Show-Error "Failed to set registry key: $Path\$Name. Error: $($_.Exception.Message)"
     }
 }
 
@@ -127,7 +147,7 @@ function Stop-ServiceSafe ($ServiceName) {
             Wait-ServiceStatus $ServiceName "Stopped" 15
         }
     } catch {
-        Write-Log "Error stopping service ${ServiceName}: $($_.Exception.Message)" "Red"
+        Show-Error "Error stopping service ${ServiceName}: $($_.Exception.Message)"
         throw
     }
 }

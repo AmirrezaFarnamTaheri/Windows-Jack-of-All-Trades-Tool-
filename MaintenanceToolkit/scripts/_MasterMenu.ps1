@@ -11,7 +11,7 @@ function Run-Script ($Number) {
         Write-Log "Launching: $($script.Name)..." "Cyan"
         & $script.FullName
     } else {
-        Write-Log "Error: Script #$Number not found." "Red"
+        Show-Error "Script #$Number not found."
         Start-Sleep -Seconds 1
     }
 }
@@ -30,7 +30,7 @@ function Show-Help {
     } elseif (Test-Path "$PSScriptRoot\HELP.md") {
         Get-Content "$PSScriptRoot\HELP.md" | More
     } else {
-        Write-Log "Help file not found." "Red"
+        Show-Error "Help file not found."
     }
     if (-not [Console]::IsInputRedirected) { Pause }
 }
@@ -39,7 +39,7 @@ function Show-SubMenu ($Category) {
     Show-Header
     switch ($Category) {
         "CLEAN" {
-            Write-Host "--- CLEANING & MAINTENANCE ---" -ForegroundColor Yellow
+            Write-Section "CLEANING & MAINTENANCE"
             Write-Host "2.  Install Cleaners (Malwarebytes/BleachBit)"
             Write-Host "4.  Deep Disk Cleanup"
             Write-Host "5.  Safe Debloat (Remove Junk Apps)"
@@ -49,7 +49,7 @@ function Show-SubMenu ($Category) {
             Write-Host "50. Find Duplicate Files"
         }
         "REPAIR" {
-            Write-Host "--- REPAIR & FIXES ---" -ForegroundColor Yellow
+            Write-Section "REPAIR & FIXES"
             Write-Host "1.  Create Restore Point"
             Write-Host "3.  System Repair (SFC / DISM)"
             Write-Host "10. Restore Win10 Context Menu"
@@ -65,7 +65,7 @@ function Show-SubMenu ($Category) {
             Write-Host "62. Fix Windows Store"
         }
         "HARDWARE" {
-            Write-Host "--- HARDWARE & DIAGNOSTICS ---" -ForegroundColor Yellow
+            Write-Section "HARDWARE & DIAGNOSTICS"
             Write-Host "9.  Check Disk Health (SMART)"
             Write-Host "11. Battery Health Report"
             Write-Host "17. Backup Drivers"
@@ -80,7 +80,7 @@ function Show-SubMenu ($Category) {
             Write-Host "65. Disable USB Suspend (Fix Lag)"
         }
         "NETWORK" {
-            Write-Host "--- NETWORK & INTERNET ---" -ForegroundColor Yellow
+            Write-Section "NETWORK & INTERNET"
             Write-Host "7.  Network Reset (Flush DNS/IP)"
             Write-Host "19. Show Wi-Fi Passwords"
             Write-Host "20. DNS Speed Benchmark"
@@ -90,7 +90,7 @@ function Show-SubMenu ($Category) {
             Write-Host "58. Block Website (Hosts)"
         }
         "SECURITY" {
-            Write-Host "--- SECURITY & PRIVACY ---" -ForegroundColor Yellow
+            Write-Section "SECURITY & PRIVACY"
             Write-Host "8.  Privacy Hardening (Telemetry)"
             Write-Host "21. Audit Scheduled Tasks"
             Write-Host "24. Get BitLocker Keys"
@@ -103,7 +103,7 @@ function Show-SubMenu ($Category) {
             Write-Host "59. Panic Button (Hide All)"
         }
         "UTILS" {
-            Write-Host "--- UTILITIES & TOOLS ---" -ForegroundColor Yellow
+            Write-Section "UTILITIES & TOOLS"
             Write-Host "6.  Update All Software"
             Write-Host "15. Clear Event Logs"
             Write-Host "23. Find Large Files"
@@ -122,7 +122,7 @@ function Show-SubMenu ($Category) {
             Write-Host "63. Install Essential Apps"
         }
     }
-    Write-Log "------------------------------------------------------"
+    Write-Host "------------------------------------------------------" -ForegroundColor DarkGray
     Write-Host "B. Back to Main Menu" -ForegroundColor Cyan
     $choice = Read-Host "Enter Script Number"
     if ($choice -eq 'B' -or $choice -eq 'b') { return }
