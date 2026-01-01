@@ -653,7 +653,7 @@ namespace SystemMaintenance
              }
              scriptsPanel.ResumeLayout();
         }
-        private void TxtSearch_TextChanged(object sender, EventArgs e) => FilterButtons(txtSearch.Text);
+        private void TxtSearch_TextChanged(object sender, EventArgs e) { FilterButtons(txtSearch.Text); }
         private void BtnCancel_Click(object sender, EventArgs e) {
             if (batchCts!=null) batchCts.Cancel();
             lock(processLock) { if (currentProcess != null && !currentProcess.HasExited) currentProcess.Kill(); }
@@ -713,7 +713,7 @@ namespace SystemMaintenance
         private void Log(string msg) {
             if (txtLog.InvokeRequired) { txtLog.Invoke((Action)(()=>Log(msg))); return; }
             txtLog.AppendText(string.Format("[{0}] {1}\r\n", DateTime.Now.ToShortTimeString(), msg));
-            try { File.AppendAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs", $"log_{DateTime.Now:yyyyMMdd}.txt"), $"[{DateTime.Now}] {msg}\r\n"); } catch {}
+            try { File.AppendAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs", string.Format("log_{0:yyyyMMdd}.txt", DateTime.Now)), string.Format("[{0}] {1}\r\n", DateTime.Now, msg)); } catch {}
         }
 
         private void ShowHelp() {
