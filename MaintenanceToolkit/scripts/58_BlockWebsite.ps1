@@ -1,30 +1,33 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
-Write-Header "Block Website via Hosts File"
-$site = Read-Host "Enter domain to block (e.g. facebook.com)"
+Write-Header "Block Website (Hosts File)"
+Get-SystemSummary
+Write-Section "Input"
 
-if ([string]::IsNullOrWhiteSpace($site)) {
-    Write-Log "No domain entered." "Red"
-    Pause-If-Interactive
-    Exit
-}
+$domain = Read-Host "Enter domain to block (e.g. facebook.com)"
 
 try {
-    $hosts = "$env:WINDIR\System32\drivers\etc\hosts"
-    if (-not (Test-Path $hosts)) {
-        New-Item -Path $hosts -ItemType File -Force | Out-Null
-    }
+    # Basic domain regex validation
+    if ($domain -match '^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,6}$') {
+        $hosts = "$env:WINDIR\System32\drivers\etc\hosts"
 
-    $entry = "127.0.0.1       $site"
-    $content = Get-Content $hosts -Raw
-    if ($content -match $site) {
-        Write-Log "$site is already blocked." "Yellow"
+        if (-not (Test-Path $hosts)) {
+            New-Item -Path $hosts -ItemType File -Force | Out-Null
+        }
+
+        if (Select-String -Path $hosts -Pattern $domain -Quiet) {
+            Show-Error "Domain already blocked."
+        } else {
+            Write-Section "Blocking"
+            Add-Content -Path $hosts -Value "127.0.0.1 $domain"
+            Add-Content -Path $hosts -Value "127.0.0.1 www.$domain"
+            ipconfig /flushdns | Out-Null
+            Show-Success "Blocked $domain and flushed DNS."
+        }
     } else {
-        Add-Content -Path $hosts -Value "`r`n$entry" -Force
-        Write-Log "Blocked $site." "Green"
-        ipconfig /flushdns | Out-Null
+        Show-Error "Invalid domain format."
     }
 } catch {
-    Write-Log "Error: $($_.Exception.Message)" "Red"
+    Show-Error "Error: $($_.Exception.Message)"
 }
 Pause-If-Interactive

@@ -1,9 +1,11 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
 Write-Header "Software Update & Optimization"
+Get-SystemSummary
 
 # 1. Winget Upgrade
 if (Test-IsWingetAvailable) {
+    Write-Section "Winget Updates"
     Write-Log "Winget detected. Checking for updates..." "Cyan"
 
     try {
@@ -16,26 +18,28 @@ if (Test-IsWingetAvailable) {
 
         $proc = Start-Process winget -ArgumentList $wingetArgs -Wait -NoNewWindow -PassThru
         if ($proc.ExitCode -eq 0) {
-            Write-Log "All apps are up to date." "Green"
+            Show-Success "All apps are up to date."
         } else {
             Write-Log "Update process finished (Code: $($proc.ExitCode))." "White"
         }
     } catch {
-        Write-Log "Winget execution failed: $($_.Exception.Message)" "Red"
+        Show-Error "Winget execution failed: $($_.Exception.Message)"
     }
 } else {
     Write-Log "Winget is not installed. Skipping software updates." "Yellow"
 }
 
 # 2. Power Plan
+Write-Section "System Optimization"
 Write-Log "Resetting Power Plan to Defaults (Fixes stuck throttles)..." "Cyan"
 try {
     Start-Process powercfg -ArgumentList "-restoredefaultschemes" -Wait -NoNewWindow
-    Write-Log "Power Plan reset." "Green"
+    Show-Success "Power Plan reset."
 } catch {
-    Write-Log "Could not reset power plan." "Red"
+    Show-Error "Could not reset power plan."
 }
 
-Write-Log "--- Optimization Complete ---" "Green"
+Write-Section "Complete"
+Show-Success "Optimization tasks finished."
 
 Pause-If-Interactive

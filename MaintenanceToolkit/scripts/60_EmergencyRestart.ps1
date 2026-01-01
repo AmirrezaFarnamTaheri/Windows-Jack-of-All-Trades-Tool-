@@ -1,10 +1,14 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
-Write-Header "EMERGENCY RESTART"
-Write-Log "Rebooting immediately..." "Red"
+Write-Header "Emergency Restart"
+Get-SystemSummary
+Write-Section "Warning"
+Write-Log "This will immediately restart the system. Unsaved work will be lost." "Red"
 
-try {
-    shutdown /r /f /t 0
-} catch {
+$c = Read-Host "Type 'OK' to confirm"
+if ($c -eq 'OK') {
     Restart-Computer -Force
+} else {
+    Write-Log "Cancelled." "Yellow"
 }
+Pause-If-Interactive

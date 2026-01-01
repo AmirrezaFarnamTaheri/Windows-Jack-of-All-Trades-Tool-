@@ -1,31 +1,38 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
-Write-Header "Scanning for Duplicate Files"
-$target = Read-Host "Enter folder path to scan"
+Write-Header "Find Duplicate Files"
+Get-SystemSummary
+Write-Section "Configuration"
+
+$path = Read-Host "Enter path to scan (default: $env:USERPROFILE\Documents)"
+if ([string]::IsNullOrWhiteSpace($path)) { $path = "$env:USERPROFILE\Documents" }
 
 try {
-    if (Test-Path $target) {
-        Write-Log "Hashing files (this takes time)..." "Yellow"
+    if (Test-Path $path) {
+        Write-Section "Scanning"
+        Write-Log "Hashing files in $path (This is slow)..." "Cyan"
 
-        $dupes = Get-ChildItem -Path $target -Recurse -File -ErrorAction SilentlyContinue |
-                 Get-FileHash -Algorithm MD5 -ErrorAction SilentlyContinue |
-                 Group-Object Hash |
-                 Where-Object { $_.Count -gt 1 }
+        $files = Get-ChildItem -Path $path -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.Length -gt 1MB }
+        $hashes = $files | Get-FileHash -Algorithm MD5
+
+        $dupes = $hashes | Group-Object Hash | Where-Object { $_.Count -gt 1 }
 
         if ($dupes) {
+            Write-Section "Duplicate Groups Found"
             foreach ($g in $dupes) {
-                Write-Log "`nDuplicate Group (MD5: $($g.Name))" "Cyan"
+                Write-Log "Hash: $($g.Name)" "Yellow"
                 foreach ($f in $g.Group) {
-                    Write-Log " - $($f.Path)" "White"
+                    Write-Log "  $($f.Path)" "White"
                 }
             }
+            Show-Success "Found $($dupes.Count) groups of duplicates."
         } else {
-            Write-Log "No duplicates found." "Green"
+            Show-Success "No duplicates found (checked files > 1MB)."
         }
     } else {
-        Write-Log "Path not found." "Red"
+        Show-Error "Path not found."
     }
 } catch {
-    Write-Log "Error: $($_.Exception.Message)" "Red"
+    Show-Error "Error: $($_.Exception.Message)"
 }
 Pause-If-Interactive

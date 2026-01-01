@@ -1,6 +1,8 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
 Write-Header "Retrieving BitLocker Recovery Keys"
+Get-SystemSummary
+Write-Section "Scanning Volumes"
 
 try {
     $volumes = Get-BitLockerVolume -ErrorAction SilentlyContinue
@@ -31,16 +33,20 @@ try {
         }
     }
 
+    Write-Section "Export"
     if ($foundKeys) {
-        $desktop = [Environment]::GetFolderPath("Desktop")
-        $outFile = "$desktop\BitLocker_Keys_$(Get-Date -Format 'yyyyMMdd-HHmm').txt"
-        $exportContent | Out-File -FilePath $outFile -Encoding UTF8
-        Write-Log "Keys exported to: $outFile" "Magenta"
-        Write-Log "KEEP THIS FILE SAFE." "Red"
+        # Compliance: Do not automatically export secrets to disk
+        # $desktop = [Environment]::GetFolderPath("Desktop")
+        # $outFile = "$desktop\BitLocker_Keys_$(Get-Date -Format 'yyyyMMdd-HHmm').txt"
+        # $exportContent | Out-File -FilePath $outFile -Encoding UTF8
+        # Show-Success "Keys exported to: $outFile"
+        Write-Log "Keys displayed above. Copy them manually if needed." "Magenta"
+    } else {
+        Write-Log "No keys found." "Yellow"
     }
 
 } catch {
-    Write-Log "Error retrieving BitLocker info: $($_.Exception.Message)" "Red"
+    Show-Error "Error retrieving BitLocker info: $($_.Exception.Message)"
 }
 
 Pause-If-Interactive

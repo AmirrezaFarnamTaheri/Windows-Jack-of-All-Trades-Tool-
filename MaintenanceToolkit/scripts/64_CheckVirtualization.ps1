@@ -1,12 +1,14 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
 Write-Header "Checking Virtualization Support"
+Get-SystemSummary
+Write-Section "Check Results"
 
 try {
     $info = Get-ComputerInfo -Property HyperVisorPresent,HyperVRequirement*
 
     if ($info.HyperVisorPresent) {
-        Write-Log "Hypervisor is running." "Green"
+        Show-Success "Hypervisor is running."
     } else {
         Write-Log "Hypervisor is NOT running." "Yellow"
     }
@@ -14,6 +16,6 @@ try {
     Write-Log "Virtualization Firmware Enabled: $($info.HyperVRequirementVirtualizationFirmwareEnabled)"
     Write-Log "Data Execution Prevention Available: $($info.HyperVRequirementDataExecutionPreventionAvailable)"
 } catch {
-    Write-Log "Error: $($_.Exception.Message)" "Red"
+    Show-Error "Error: $($_.Exception.Message)"
 }
 Pause-If-Interactive

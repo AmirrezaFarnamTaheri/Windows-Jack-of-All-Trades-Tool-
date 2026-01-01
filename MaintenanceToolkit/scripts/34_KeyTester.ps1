@@ -1,7 +1,9 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
 Write-Header "Keyboard Input Tester"
-Write-Log "Press any key to see its code. Press ESC to quit." "Yellow"
+Get-SystemSummary
+Write-Section "Instructions"
+Write-Log "Press any key to see its code. Press ESC to quit." "Cyan"
 
 try {
     while ($true) {
@@ -13,7 +15,7 @@ try {
         Start-Sleep -Milliseconds 50
     }
 } catch {
-    Write-Log "Error reading input: $($_.Exception.Message)" "Red"
+    Show-Error "Error reading input: $($_.Exception.Message)"
 }
 Write-Log "Exited." "Gray"
 Pause-If-Interactive

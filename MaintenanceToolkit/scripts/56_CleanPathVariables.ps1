@@ -1,6 +1,8 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
 Write-Header "Cleaning System PATH Environment Variable"
+Get-SystemSummary
+Write-Section "Execution"
 
 try {
     $scope = "Machine" # System PATH
@@ -23,12 +25,12 @@ try {
 
     if ($newPath -ne $path) {
         [Environment]::SetEnvironmentVariable("Path", $newPath, $scope)
-        Write-Log "PATH Cleaned and Updated." "Green"
+        Show-Success "PATH Cleaned and Updated."
     } else {
-        Write-Log "PATH is already clean." "Green"
+        Show-Success "PATH is already clean."
     }
 
 } catch {
-    Write-Log "Error: $($_.Exception.Message)" "Red"
+    Show-Error "Error: $($_.Exception.Message)"
 }
 Pause-If-Interactive

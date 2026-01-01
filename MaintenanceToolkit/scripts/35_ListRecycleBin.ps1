@@ -1,6 +1,8 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
 Write-Header "Scanning Recycle Bin"
+Get-SystemSummary
+Write-Section "Scan Results"
 
 try {
     $shell = New-Object -ComObject Shell.Application
@@ -14,9 +16,12 @@ try {
     }
 
     if ($items.Count -gt 0) {
-        Write-Log "`nTo empty the Recycle Bin, right-click it on your Desktop." "Yellow"
+        Write-Section "Recommendation"
+        Write-Log "To empty the Recycle Bin, right-click it on your Desktop." "Yellow"
+    } else {
+        Show-Success "Recycle Bin is empty."
     }
 } catch {
-    Write-Log "Error scanning Recycle Bin: $($_.Exception.Message)" "Red"
+    Show-Error "Error scanning Recycle Bin: $($_.Exception.Message)"
 }
 Pause-If-Interactive

@@ -1,6 +1,8 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
 Write-Header "Rebuilding Font Cache"
+Get-SystemSummary
+Write-Section "Execution"
 
 try {
     Write-Log "Stopping Font Cache Service..."
@@ -13,8 +15,8 @@ try {
     Write-Log "Starting Font Cache Service..."
     Start-Service "FontCache" -ErrorAction SilentlyContinue
 
-    Write-Log "Font Cache Rebuilt. A restart is recommended." "Green"
+    Show-Success "Font Cache Rebuilt. A restart is recommended."
 } catch {
-    Write-Log "Error: $($_.Exception.Message)" "Red"
+    Show-Error "Error: $($_.Exception.Message)"
 }
 Pause-If-Interactive

@@ -1,32 +1,43 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
-Write-Header "Deleting Empty Folders"
-$target = Read-Host "Enter folder path to scan (default is user root)"
-if ([string]::IsNullOrWhiteSpace($target)) { $target = $env:USERPROFILE }
+Write-Header "Delete Empty Folders"
+Get-SystemSummary
+Write-Section "Configuration"
+
+$path = Read-Host "Enter path to clean (default: $env:USERPROFILE)"
+if ([string]::IsNullOrWhiteSpace($path)) { $path = $env:USERPROFILE }
 
 try {
-    if (Test-Path $target) {
-        Write-Log "Scanning $target for empty folders..."
+    Write-Section "Scanning"
+    if (Test-Path $path) {
+        Write-Log "Scanning $path for empty directories..." "Cyan"
 
-        # Sort by length descending to delete nested empty folders correctly
-        $dirs = Get-ChildItem -Path $target -Recurse -Directory -Force -ErrorAction SilentlyContinue |
-                Sort-Object -Property FullName -Descending
+        # Bottom-up approach needed to delete nested empty folders
+        $folders = Get-ChildItem -Path $path -Recurse -Directory -ErrorAction SilentlyContinue |
+                   Sort-Object FullName -Descending
 
         $count = 0
-        foreach ($dir in $dirs) {
+        foreach ($f in $folders) {
             try {
-                if ((Get-ChildItem -Path $dir.FullName -Force -ErrorAction SilentlyContinue | Measure-Object).Count -eq 0) {
-                    Remove-Item -Path $dir.FullName -Force -ErrorAction SilentlyContinue
-                    Write-Log "Deleted: $($dir.FullName)" "Gray"
+                if ((Get-ChildItem $f.FullName -Force | Measure-Object).Count -eq 0) {
+                    Remove-Item $f.FullName -Force -ErrorAction SilentlyContinue
+                    Write-Log "Deleted: $($f.FullName)" "Gray"
                     $count++
                 }
-            } catch {}
+            } catch {
+                Write-Log "Failed to process $($f.FullName): $($_.Exception.Message)" "Red"
+            }
         }
-        Write-Log "Deleted $count empty folders." "Green"
+
+        if ($count -gt 0) {
+            Show-Success "Deleted $count empty folders."
+        } else {
+            Show-Success "No empty folders found."
+        }
     } else {
-        Write-Log "Path not found." "Red"
+        Show-Error "Path not found."
     }
 } catch {
-    Write-Log "Error: $($_.Exception.Message)" "Red"
+    Show-Error "Error: $($_.Exception.Message)"
 }
 Pause-If-Interactive

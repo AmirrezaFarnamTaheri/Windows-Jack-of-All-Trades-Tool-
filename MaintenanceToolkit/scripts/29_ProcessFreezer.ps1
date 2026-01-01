@@ -1,7 +1,10 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
 Write-Header "Process Freezer"
-Write-Log "Suspends a process to free resources without closing it."
+Get-SystemSummary
+Write-Section "Instructions"
+Write-Log "Suspends a process to free resources without closing it." "Cyan"
+
 $name = Read-Host "Enter Process Name (e.g. chrome)"
 
 # Define P/Invoke for Suspend/Resume
@@ -40,16 +43,16 @@ try {
                 Write-Log "Suspending $($p.ProcessName) (PID: $($p.Id))..."
                 [ProcessUtil]::NtSuspendProcess($handle) | Out-Null
                 [ProcessUtil]::CloseHandle($handle) | Out-Null
-                Write-Log "Success." "Green"
+                Show-Success "Suspended $($p.ProcessName) ($($p.Id))"
             } else {
-                Write-Log "Failed to open handle for PID $($p.Id)." "Red"
+                Show-Error "Failed to open handle for PID $($p.Id)."
             }
         }
         Write-Log "`nTo Resume, restart the app or use Resource Monitor." "Yellow"
     } else {
-        Write-Log "Process '$name' not found." "Yellow"
+        Show-Error "Process '$name' not found."
     }
 } catch {
-    Write-Log "Error: $($_.Exception.Message)" "Red"
+    Show-Error "Error: $($_.Exception.Message)"
 }
 Pause-If-Interactive

@@ -1,6 +1,8 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
 Write-Header "Fixing Windows Store"
+Get-SystemSummary
+Write-Section "Execution"
 
 try {
     Write-Log "Resetting Store Cache (wsreset)..." "Yellow"
@@ -10,8 +12,8 @@ try {
     Get-AppXPackage -AllUsers -Name Microsoft.WindowsStore |
     ForEach-Object { Add-AppxPackage -DisableDevelopmentMode -Register "$($_.InstallLocation)\AppXManifest.xml" -ErrorAction SilentlyContinue }
 
-    Write-Log "Windows Store Repair Complete." "Green"
+    Show-Success "Windows Store Repair Complete."
 } catch {
-    Write-Log "Error: $($_.Exception.Message)" "Red"
+    Show-Error "Error: $($_.Exception.Message)"
 }
 Pause-If-Interactive

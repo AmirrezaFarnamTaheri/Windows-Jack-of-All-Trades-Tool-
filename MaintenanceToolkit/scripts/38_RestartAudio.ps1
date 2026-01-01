@@ -1,6 +1,8 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
 Write-Header "Restarting Audio Services"
+Get-SystemSummary
+Write-Section "Execution"
 
 try {
     $services = "Audiosrv", "AudioEndpointBuilder"
@@ -8,8 +10,8 @@ try {
         Write-Log "Restarting $svc..."
         Restart-Service $svc -Force -ErrorAction SilentlyContinue
     }
-    Write-Log "Audio Services Restarted." "Green"
+    Show-Success "Audio Services Restarted."
 } catch {
-    Write-Log "Error: $($_.Exception.Message)" "Red"
+    Show-Error "Error: $($_.Exception.Message)"
 }
 Pause-If-Interactive
