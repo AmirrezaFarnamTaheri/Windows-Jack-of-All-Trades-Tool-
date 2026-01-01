@@ -58,7 +58,9 @@ if ($results.Count -gt 0) {
     $report | Add-ReportSection "Benchmark Results" $sorted "Table"
 
     $best = $sorted | Where-Object { $_."Avg Response (ms)" -match '^\d' } | Select-Object -First 1
-    $report | Add-ReportSection "Recommendation" "Based on this test, the fastest provider for you is <strong>$($best.Provider)</strong>." "RawHtml"
+    if ($best) {
+        $report | Add-ReportSection "Recommendation" "Based on this test, the fastest provider for you is <strong>$($best.Provider)</strong>." "RawHtml"
+    }
 
     $outFile = "$env:USERPROFILE\Desktop\DNSBenchmark_$(Get-Date -Format 'yyyyMMdd_HHmm').html"
     $report | Export-Report-Html $outFile

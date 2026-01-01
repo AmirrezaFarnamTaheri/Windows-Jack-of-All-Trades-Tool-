@@ -40,6 +40,28 @@ namespace SystemMaintenance
         private Dictionary<string, List<ScriptInfo>> categories = new Dictionary<string, List<ScriptInfo>>();
         private string currentCategory = "DASHBOARD";
 
+        public class SystemStatsData {
+             public string OS { get; set; }
+             public string Uptime { get; set; }
+             public string CPU { get; set; }
+             public int Cores { get; set; }
+             public int Threads { get; set; }
+             public string GPU { get; set; }
+             public long RamTotal { get; set; }
+             public long RamFree { get; set; }
+             public bool RebootPending { get; set; }
+             public List<DriveInfoData> Drives { get; set; }
+
+             public SystemStatsData() { Drives = new List<DriveInfoData>(); }
+        }
+
+        public class DriveInfoData {
+             public string Name { get; set; }
+             public long TotalSize { get; set; } // GB
+             public long FreeSpace { get; set; } // GB
+             public double PercentFree { get; set; }
+        }
+
         // Batch Mode Controls
         private CheckBox chkBatchMode;
         private CheckBox chkVerbose;
@@ -224,10 +246,26 @@ namespace SystemMaintenance
 
             // Search
             Panel searchPanel = new Panel { Dock = DockStyle.Right, Width = 250, Padding = new Padding(5) };
-            txtSearch = new TextBox { Dock = DockStyle.Fill, Font = new Font("Segoe UI", 10F) };
+
+            Panel txtSearchContainer = new Panel { Dock = DockStyle.Fill, BackColor = Color.White, BorderStyle = BorderStyle.FixedSingle };
+            // Workaround for TextBox minimal styling
+
+            txtSearch = new TextBox { Dock = DockStyle.Left, Width = 180, Font = new Font("Segoe UI", 10F), BorderStyle = BorderStyle.None, Location = new Point(2,2) };
             txtSearch.TextChanged += TxtSearch_TextChanged;
+
+            Button btnClearSearch = new Button { Text = "X", Dock = DockStyle.Right, Width = 25, FlatStyle = FlatStyle.Flat, ForeColor = Color.Gray, Cursor = Cursors.Hand, BackColor = Color.White };
+            btnClearSearch.FlatAppearance.BorderSize = 0;
+            btnClearSearch.Click += (s,e) => { txtSearch.Text = ""; };
+
+            txtSearchContainer.Controls.Add(txtSearch);
+            txtSearchContainer.Controls.Add(btnClearSearch);
+            txtSearch.Width = txtSearchContainer.Width - btnClearSearch.Width - 5; // Adjust width
+
+            txtSearchContainer.Resize += (s,e) => txtSearch.Width = txtSearchContainer.Width - btnClearSearch.Width - 5;
+
             Label lblSearch = new Label { Text = "Search:", Dock = DockStyle.Left, AutoSize = true, TextAlign = ContentAlignment.MiddleRight, Padding = new Padding(0,5,5,0) };
-            searchPanel.Controls.Add(txtSearch);
+
+            searchPanel.Controls.Add(txtSearchContainer);
             searchPanel.Controls.Add(lblSearch);
 
             // Batch Controls
@@ -368,39 +406,42 @@ namespace SystemMaintenance
             bool wasAutoSize = scriptsPanel.AutoSize;
             scriptsPanel.AutoSize = false;
 
-            // Just remove controls from view, do not dispose cached cards!
-            scriptsPanel.Controls.Clear();
+            try {
+                // Just remove controls from view, do not dispose cached cards!
+                scriptsPanel.Controls.Clear();
 
-            // Update Sidebar UI
-            foreach(var b in sidebarButtons) {
-                bool isActive = (string)b.Tag == category;
-                if (isActive) {
-                    b.BackColor = isDarkMode ? Color.FromArgb(60,60,60) : Color.LightGray;
-                    b.ForeColor = colAccent; // Highlight text
-                    b.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
-                } else {
-                    b.BackColor = Color.Transparent;
-                    b.ForeColor = isDarkMode ? Color.White : Color.Black;
-                    b.Font = new Font("Segoe UI", 10F, FontStyle.Regular);
+                // Update Sidebar UI
+                foreach(var b in sidebarButtons) {
+                    bool isActive = (string)b.Tag == category;
+                    if (isActive) {
+                        b.BackColor = isDarkMode ? Color.FromArgb(60,60,60) : Color.LightGray;
+                        b.ForeColor = colAccent; // Highlight text
+                        b.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
+                    } else {
+                        b.BackColor = Color.Transparent;
+                        b.ForeColor = isDarkMode ? Color.White : Color.Black;
+                        b.Font = new Font("Segoe UI", 10F, FontStyle.Regular);
+                    }
+                }
+
+                if (category == "DASHBOARD") RenderDashboard();
+                else if (category == "HELP") RenderHelp();
+                else
+                {
+                    List<ScriptInfo> scripts = new List<ScriptInfo>();
+                    if (categories.ContainsKey(category)) scripts = categories[category];
+
+                    foreach(var s in scripts) {
+                        scriptsPanel.Controls.Add(GetOrAddCard(s));
+                    }
                 }
             }
-
-            if (category == "DASHBOARD") RenderDashboard();
-            else if (category == "HELP") RenderHelp();
-            else
-            {
-                List<ScriptInfo> scripts = new List<ScriptInfo>();
-                if (categories.ContainsKey(category)) scripts = categories[category];
-
-                foreach(var s in scripts) {
-                    scriptsPanel.Controls.Add(GetOrAddCard(s));
-                }
+            finally {
+                scriptsPanel.AutoSize = wasAutoSize;
+                ChkBatchMode_CheckedChanged(null, null); // Re-apply batch visibility
+                scriptsPanel.ResumeLayout(true);
+                this.ResumeLayout(true);
             }
-
-            scriptsPanel.AutoSize = wasAutoSize;
-            ChkBatchMode_CheckedChanged(null, null); // Re-apply batch visibility
-            scriptsPanel.ResumeLayout(true);
-            this.ResumeLayout(true);
         }
 
         private void RenderDashboard()
@@ -410,7 +451,7 @@ namespace SystemMaintenance
                 dashboardPanel = new Panel { Width = Math.Max(100, scriptsPanel.Width - 40), AutoSize = true, Padding = new Padding(0,0,0,20) };
 
                 // Header Section
-                Label lblHeader = new Label { Text = "System Dashboard", Font = new Font("Segoe UI", 20F, FontStyle.Light), AutoSize = true, Location = new Point(0, 0), ForeColor = isDarkMode ? colTextDark : colTextLight, Tag = "THEMEABLE" };
+                Label lblHeader = new Label { Text = "System Dashboard", Font = new Font("Segoe UI", 20F, FontStyle.Regular), AutoSize = true, Location = new Point(0, 0), ForeColor = isDarkMode ? colTextDark : colTextLight, Tag = "THEMEABLE" };
                 dashboardPanel.Controls.Add(lblHeader);
 
                 Button btnRefresh = new Button { Text = "↻ Refresh Stats", Size = new Size(120, 30), Location = new Point(dashboardPanel.Width - 130, 10), FlatStyle = FlatStyle.Flat, BackColor = colAccent, ForeColor = Color.White };
@@ -418,36 +459,92 @@ namespace SystemMaintenance
 
                 dashboardPanel.Controls.Add(btnRefresh);
 
-                // System Info Card
+                // System Info Card Container
                 Panel infoCard = new Panel {
                     Location = new Point(0, 50),
-                    Size = new Size(dashboardPanel.Width, 220), // Slightly taller for more info
+                    Size = new Size(dashboardPanel.Width, 250),
                     BackColor = isDarkMode ? colCardDark : colCardLight,
                     Tag = "THEMEABLE_CARD"
                 };
 
-                Label lblInfo = new Label {
-                    Text = "Loading system information...",
-                    Font = new Font("Consolas", 10F),
-                    AutoSize = true,
-                    Location = new Point(20, 20),
-                    ForeColor = isDarkMode ? colTextDark : colTextLight,
-                    Tag = "THEMEABLE"
-                };
-                infoCard.Controls.Add(lblInfo);
+                // We will populate infoCard dynamically
                 dashboardPanel.Controls.Add(infoCard);
+
+                Action<SystemStatsData> updateUI = (data) => {
+                    infoCard.Controls.Clear();
+                    int y = 10;
+
+                    // OS & Uptime
+                    Label lblOS = new Label { Text = string.Format("{0} | {1}", data.OS, Environment.UserName), AutoSize = true, Location = new Point(15, y), Font = new Font("Segoe UI", 12F, FontStyle.Bold), ForeColor = isDarkMode ? colTextDark : colTextLight, Tag = "THEMEABLE" };
+                    Label lblUp = new Label { Text = "Uptime: " + data.Uptime, AutoSize = true, Location = new Point(15, y+25), ForeColor = isDarkMode ? Color.LightGray : Color.Gray, Tag = "THEMEABLE_DESC" };
+                    infoCard.Controls.Add(lblOS);
+                    infoCard.Controls.Add(lblUp);
+
+                    if (data.RebootPending) {
+                         Label lblWarn = new Label { Text = "⚠ Pending Reboot", AutoSize = true, Location = new Point(300, y), ForeColor = Color.OrangeRed, Font = new Font("Segoe UI", 10F, FontStyle.Bold) };
+                         infoCard.Controls.Add(lblWarn);
+                    }
+
+                    y += 55;
+
+                    // CPU
+                    Label lblCPU = new Label { Text = string.Format("CPU: {0} ({1}C/{2}T)", data.CPU, data.Cores, data.Threads), AutoSize = true, Location = new Point(15, y), ForeColor = isDarkMode ? colTextDark : colTextLight, Tag = "THEMEABLE" };
+                    infoCard.Controls.Add(lblCPU);
+                    y += 25;
+
+                    // GPU
+                    if (!string.IsNullOrEmpty(data.GPU)) {
+                        Label lblGPU = new Label { Text = "GPU: " + data.GPU, AutoSize = true, Location = new Point(15, y), ForeColor = isDarkMode ? colTextDark : colTextLight, Tag = "THEMEABLE" };
+                        infoCard.Controls.Add(lblGPU);
+                        y += 30;
+                    }
+
+                    // RAM
+                    double ramPct = 0;
+                    if (data.RamTotal > 0) ramPct = (1.0 - ((double)data.RamFree / data.RamTotal)) * 100;
+
+                    Label lblRam = new Label { Text = string.Format("RAM: {0}MB Free / {1}MB Total ({2:F1}% Used)", data.RamFree, data.RamTotal, ramPct), AutoSize = true, Location = new Point(15, y), ForeColor = isDarkMode ? colTextDark : colTextLight, Tag = "THEMEABLE" };
+                    infoCard.Controls.Add(lblRam);
+                    y += 20;
+
+                    ProgressBar pbRam = new ProgressBar { Location = new Point(15, y), Width = infoCard.Width - 40, Height = 15, Value = (int)Math.Min(100, Math.Max(0, ramPct)), Style = ProgressBarStyle.Continuous };
+                    infoCard.Controls.Add(pbRam);
+                    y += 25;
+
+                    // Disks
+                    foreach(var d in data.Drives) {
+                         Label lblD = new Label { Text = string.Format("{0} {1}GB Free / {2}GB Total ({3:F1}% Free)", d.Name, d.FreeSpace, d.TotalSize, d.PercentFree), AutoSize = true, Location = new Point(15, y), ForeColor = isDarkMode ? colTextDark : colTextLight, Tag = "THEMEABLE" };
+                         infoCard.Controls.Add(lblD);
+                         y += 20;
+
+                         // Invert logic for progress bar (Usage)
+                         int usage = 100 - (int)Math.Min(100, Math.Max(0, d.PercentFree));
+                         ProgressBar pbD = new ProgressBar { Location = new Point(15, y), Width = infoCard.Width - 40, Height = 10, Value = usage, Style = ProgressBarStyle.Continuous };
+                         infoCard.Controls.Add(pbD);
+                         y += 20;
+                    }
+
+                    // Adjust Height
+                    infoCard.Height = y + 10;
+
+                    // Trigger reflow of Quick Actions
+                    foreach(Control c in dashboardPanel.Controls) {
+                        if (c.Text == "Quick Maintenance") c.Location = new Point(0, infoCard.Bottom + 25);
+                        if (c.Tag != null && c.Tag.ToString() == "QUICK_FLOW") c.Location = new Point(0, infoCard.Bottom + 55);
+                    }
+                };
 
                 // Wire up refresh
                 btnRefresh.Click += async (s, e) => {
                      btnRefresh.Enabled = false;
-                     lblInfo.Text = "Refreshing system stats...";
-
                      try {
-                         string stats = await Task.Run(() => GetDetailedSystemInfo());
-
-                         if (!IsDisposed && !dashboardPanel.IsDisposed && !lblInfo.IsDisposed && lblInfo.IsHandleCreated) {
-                            lblInfo.Text = stats;
+                         SystemStatsData stats = await Task.Run(() => GetSystemStatsData());
+                         if (!IsDisposed && !dashboardPanel.IsDisposed && infoCard.IsHandleCreated) {
+                            Invoke((Action)(() => updateUI(stats)));
                          }
+                     }
+                     catch (Exception ex) {
+                         MessageBox.Show("Error refreshing stats: " + ex.Message, "Refresh Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
                      }
                      finally {
                          if (!IsDisposed && !btnRefresh.IsDisposed) {
@@ -458,12 +555,12 @@ namespace SystemMaintenance
 
                 // Initial Load (Async)
                 Task.Run(() => {
-                    string stats = GetDetailedSystemInfo();
-                    if (!IsDisposed && !dashboardPanel.IsDisposed && !lblInfo.IsDisposed && lblInfo.IsHandleCreated) {
-                        lblInfo.BeginInvoke((Action)(() => {
-                            if (!IsDisposed && !lblInfo.IsDisposed) lblInfo.Text = stats;
-                        }));
-                    }
+                    try {
+                        SystemStatsData stats = GetSystemStatsData();
+                        if (!IsDisposed && !dashboardPanel.IsDisposed && infoCard.IsHandleCreated) {
+                            Invoke((Action)(() => updateUI(stats)));
+                        }
+                    } catch {}
                 });
 
                 // Quick Actions Section
@@ -490,7 +587,13 @@ namespace SystemMaintenance
                 dashboardPanel.Width = scriptsPanel.Width - 40;
                 // Update internal widths
                 foreach(Control c in dashboardPanel.Controls) {
-                    if (c.Tag != null && c.Tag.ToString() == "THEMEABLE_CARD") c.Width = dashboardPanel.Width;
+                    if (c.Tag != null && c.Tag.ToString() == "THEMEABLE_CARD") {
+                         c.Width = dashboardPanel.Width;
+                         // Resize progress bars inside
+                         foreach(Control inner in c.Controls) {
+                             if (inner is ProgressBar) inner.Width = c.Width - 40;
+                         }
+                    }
                     if (c.Tag != null && c.Tag.ToString() == "QUICK_FLOW") c.Width = dashboardPanel.Width;
                 }
             }
@@ -1031,11 +1134,22 @@ namespace SystemMaintenance
 
         private string GetDetailedSystemInfo()
         {
+            // Legacy wrapper for backward compatibility if needed, though mostly unused now
+            var data = GetSystemStatsData();
             StringBuilder sb = new StringBuilder();
-            sb.AppendLine("   OS:       " + GetOSFriendlyName());
-            sb.AppendLine("   Machine:  " + Environment.MachineName);
-            sb.AppendLine("   User:     " + Environment.UserName);
-            sb.AppendLine("   Uptime:   " + GetUptime());
+            sb.AppendLine("OS: " + data.OS);
+            sb.AppendLine("Uptime: " + data.Uptime);
+            sb.AppendLine("CPU: " + data.CPU);
+            sb.AppendLine(string.Format("RAM: {0}MB Free / {1}MB Total", data.RamFree, data.RamTotal));
+            if (data.RebootPending) sb.AppendLine("PENDING REBOOT");
+            return sb.ToString();
+        }
+
+        private SystemStatsData GetSystemStatsData()
+        {
+            var data = new SystemStatsData();
+            data.OS = GetOSFriendlyName();
+            data.Uptime = GetUptime();
 
             try {
                 using (var searcher = new ManagementObjectSearcher("SELECT Name, NumberOfCores, NumberOfLogicalProcessors FROM Win32_Processor"))
@@ -1043,54 +1157,58 @@ namespace SystemMaintenance
                     foreach (var item in searcher.Get())
                     {
                         string cpu = item["Name"].ToString();
-                        // Truncate CPU name if too long for cleaner display
                         if (cpu.Length > 40) cpu = cpu.Substring(0, 37) + "...";
-                        sb.AppendLine("   CPU:      " + cpu);
-                        sb.AppendLine(string.Format("   Cores:    {0} | Threads: {1}", item["NumberOfCores"], item["NumberOfLogicalProcessors"]));
+                        data.CPU = cpu;
+                        data.Cores = Convert.ToInt32(item["NumberOfCores"]);
+                        data.Threads = Convert.ToInt32(item["NumberOfLogicalProcessors"]);
+                        break;
                     }
                 }
+            } catch { data.CPU = "Unknown"; }
 
-                try {
-                    using (var searcher = new ManagementObjectSearcher("SELECT Name, DriverVersion FROM Win32_VideoController"))
-                    {
-                        foreach (var item in searcher.Get())
-                        {
-                            sb.AppendLine("   GPU:      " + item["Name"].ToString());
-                        }
-                    }
-                } catch {}
+            try {
+                 using (var searcher = new ManagementObjectSearcher("SELECT Name FROM Win32_VideoController"))
+                 {
+                     foreach (var item in searcher.Get()) {
+                         data.GPU = item["Name"].ToString();
+                         break; // Just get first GPU
+                     }
+                 }
+            } catch {}
 
+            try {
                 using (var searcher = new ManagementObjectSearcher("SELECT TotalVisibleMemorySize, FreePhysicalMemory FROM Win32_OperatingSystem"))
                 {
                     foreach (var item in searcher.Get())
                     {
-                        long totalRam = Convert.ToInt64(item["TotalVisibleMemorySize"]) / 1024;
-                        long freeRam = Convert.ToInt64(item["FreePhysicalMemory"]) / 1024;
-                        double percentFree = (double)freeRam / totalRam * 100;
-                        sb.AppendLine(string.Format("   RAM:      {0} MB Free / {1} MB Total ({2:F1}% Free)", freeRam, totalRam, percentFree));
+                        data.RamTotal = Convert.ToInt64(item["TotalVisibleMemorySize"]) / 1024;
+                        data.RamFree = Convert.ToInt64(item["FreePhysicalMemory"]) / 1024;
                     }
                 }
+            } catch {}
 
-                // Check Pending Reboot
-                bool reboot = false;
-                try { using (var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending")) { if (key != null) reboot = true; } } catch {}
-                try { using (var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired")) { if (key != null) reboot = true; } } catch {}
+            try {
+                 bool reboot = false;
+                 try { using (var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending")) { if (key != null) reboot = true; } } catch {}
+                 try { using (var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired")) { if (key != null) reboot = true; } } catch {}
+                 data.RebootPending = reboot;
+            } catch {}
 
-                if (reboot) sb.AppendLine("   STATUS:   Pending Reboot (!)");
-
-                sb.AppendLine("   --------------------------------------------------");
+            try {
                 foreach (var drive in DriveInfo.GetDrives()) {
                     if (drive.IsReady && drive.DriveType == DriveType.Fixed) {
-                        long freeGb = drive.TotalFreeSpace / 1073741824;
-                        long totalGb = drive.TotalSize / 1073741824;
-                        double percentFree = (double)drive.TotalFreeSpace / drive.TotalSize * 100;
-                        sb.AppendLine(string.Format("   Disk ({0}): {1} GB Free / {2} GB Total ({3:F1}% Free)", drive.Name, freeGb, totalGb, percentFree));
+                        var d = new DriveInfoData {
+                             Name = drive.Name,
+                             TotalSize = drive.TotalSize / 1073741824,
+                             FreeSpace = drive.TotalFreeSpace / 1073741824
+                        };
+                        d.PercentFree = (double)drive.TotalFreeSpace / drive.TotalSize * 100;
+                        data.Drives.Add(d);
                     }
                 }
-            } catch (Exception ex) {
-                sb.AppendLine("Error gathering info: " + ex.Message);
-            }
-            return sb.ToString();
+            } catch {}
+
+            return data;
         }
 
         private string GetOSFriendlyName()

@@ -22,7 +22,7 @@ try {
                 Password = $pass
             }
             if ($pass -ne "N/A") {
-                Write-Log "Profile: $p | Key: $pass" "Cyan"
+                Write-Log "Profile: $p | Key: [REDACTED]" "Cyan"
             } else {
                 Write-Log "Profile: $p | Open/No Key" "Gray"
             }

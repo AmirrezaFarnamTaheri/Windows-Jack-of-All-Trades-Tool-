@@ -11,6 +11,8 @@ try {
 
     # OS & Boot
     $os = Get-CimInstance Win32_OperatingSystem
+    # BIOS
+    $bios = Get-CimInstance Win32_BIOS
     $report | Add-ReportSection "Operating System" @{
         "OS Name" = "$($os.Caption)"
         "Architecture" = "$($os.OSArchitecture)"
@@ -18,18 +20,23 @@ try {
         "Build Number" = "$($os.BuildNumber)"
         "Install Date" = "$($os.InstallDate)"
         "Last Boot" = "$($os.LastBootUpTime)"
+        "BIOS Version" = "$($bios.SMBIOSBIOSVersion)"
+        "BIOS Date" = "$($bios.ReleaseDate)"
     } "KeyValue"
 
     # Hardware
     $cpu = Get-CimInstance Win32_Processor
     $ramTotal = [math]::Round($os.TotalVisibleMemorySize / 1MB, 2)
     $ramFree = [math]::Round($os.FreePhysicalMemory / 1MB, 2)
+    $ramUsed = $ramTotal - $ramFree
+    $ramPct = [math]::Round(($ramUsed / $ramTotal) * 100, 1)
 
     $report | Add-ReportSection "Hardware Summary" @{
         "Processor" = "$($cpu.Name)"
         "Cores / Threads" = "$($cpu.NumberOfCores) / $($cpu.NumberOfLogicalProcessors)"
         "Total RAM" = "$ramTotal GB"
         "Free RAM" = "$ramFree GB"
+        "Memory Usage" = (New-ProgressBarHtml $ramPct "$ramPct% Used")
     } "KeyValue"
 
     # Security Summary
@@ -37,12 +44,14 @@ try {
     try {
         $av = Get-CimInstance -Namespace root/SecurityCenter2 -ClassName AntivirusProduct -ErrorAction Stop
         if ($av) {
+            $avList = @()
             foreach ($a in $av) {
                 # productState is a bitmask. 0x1000 (4096) indicates it is enabled.
                 $isEnabled = ($a.productState -band 4096) -ne 0
                 $status = if ($isEnabled) {"Enabled"} else {"Disabled"}
-                $secInfo["Antivirus"] = "$($a.displayName) ($status)"
+                $avList += "$($a.displayName) ($status)"
             }
+            $secInfo["Antivirus"] = $avList -join ", "
         } else {
              $secInfo["Antivirus"] = "Not Found"
         }
