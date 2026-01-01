@@ -113,7 +113,18 @@ namespace SystemMaintenance
             if (tempScriptDir != null && Directory.Exists(tempScriptDir))
             {
                 try {
+                    lock (processLock)
+                    {
+                        if (currentProcess != null && !currentProcess.HasExited)
+                        {
+                            try { currentProcess.Kill(); } catch { }
+                            currentProcess = null;
+                            Interlocked.Exchange(ref scriptRunning, 0);
+                        }
+                    }
+
                     Directory.Delete(tempScriptDir, true);
+                    tempScriptDir = null;
                 } catch (Exception ex) {
                     Debug.WriteLine("Failed to cleanup temp dir: " + ex.Message);
                 }
@@ -618,7 +629,10 @@ namespace SystemMaintenance
                         using (Stream stream = assembly.GetManifestResourceStream(resourceName))
                         {
                             if (stream == null) {
-                                Invoke((Action)(() => Log("Error: Missing resource stream for " + resourceName)));
+                                if (!IsDisposed && IsHandleCreated)
+                                    BeginInvoke((Action)(() => Log("Error: Missing resource stream for " + resourceName)));
+                                else
+                                    Debug.WriteLine("Error: Missing resource stream for " + resourceName);
                                 continue;
                             }
                             using (FileStream fileStream = new FileStream(fullPath, FileMode.Create))
@@ -638,12 +652,11 @@ namespace SystemMaintenance
             string baseDir = AppDomain.CurrentDomain.BaseDirectory;
 
             // Priority 1: Local scripts folder (Development / portable extraction)
-            // Search order: scripts/, MaintenanceToolkit/scripts/, ../scripts/, ../../scripts/
+            // Restricted search order to prevent untrusted path execution risks.
+            // We only search specifically adjacent 'scripts' or 'MaintenanceToolkit/scripts' folders.
             string[] localPaths = new string[] {
                 Path.Combine(baseDir, "scripts", fileName),
-                Path.Combine(baseDir, "MaintenanceToolkit", "scripts", fileName),
-                Path.Combine(baseDir, "..", "scripts", fileName),
-                Path.Combine(baseDir, "..", "..", "scripts", fileName)
+                Path.Combine(baseDir, "MaintenanceToolkit", "scripts", fileName)
             };
 
             foreach (string p in localPaths)
@@ -717,6 +730,12 @@ namespace SystemMaintenance
             if (MessageBox.Show(string.Format("Ready to execute {0} scripts?\nThis process will run sequentially.", queue.Count), "Confirm Batch Run", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
                 return;
 
+            if (Interlocked.CompareExchange(ref scriptRunning, 1, 0) != 0)
+            {
+                MessageBox.Show("A script is already running.");
+                return;
+            }
+
             batchCts = new CancellationTokenSource();
             btnRunBatch.Enabled = false;
             progressBar.Visible = true;
@@ -742,6 +761,7 @@ namespace SystemMaintenance
                 btnCancel.Visible = false;
                 statusLabel.Text = "Ready";
                 progressBar.Style = ProgressBarStyle.Marquee; // Reset for single runs
+                Interlocked.Exchange(ref scriptRunning, 0);
             }
         }
 
