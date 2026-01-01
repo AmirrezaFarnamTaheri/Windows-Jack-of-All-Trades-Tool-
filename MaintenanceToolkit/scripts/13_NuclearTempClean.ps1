@@ -2,60 +2,89 @@
 Assert-Admin
 Write-Header "Nuclear Temporary File Cleanup"
 Get-SystemSummary
-Write-Section "Warning"
-Write-Log "This script aggressively cleans temporary files." "Yellow"
-Write-Log "It is recommended to close other applications before running." "Cyan"
 
-$folders = @(
-    "$env:TEMP",
-    "$env:WINDIR\Temp",
-    "$env:LOCALAPPDATA\Temp"
+function Get-FolderSize ($Path) {
+    if (-not (Test-Path $Path)) { return 0 }
+    $size = (Get-ChildItem $Path -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
+    if ($size) { return $size } else { return 0 }
+}
+
+function Format-Size ($Bytes) {
+    if ($Bytes -gt 1GB) { return "$([math]::Round($Bytes / 1GB, 2)) GB" }
+    if ($Bytes -gt 1MB) { return "$([math]::Round($Bytes / 1MB, 2)) MB" }
+    return "$([math]::Round($Bytes / 1KB, 2)) KB"
+}
+
+Write-Section "Analyzing Disk Usage"
+Write-Log "Calculating reclaimable space..." "Cyan"
+
+# Define Targets
+$targets = @(
+    @{ Name="User Temp"; Path="$env:TEMP" },
+    @{ Name="Windows Temp"; Path="$env:WINDIR\Temp" },
+    @{ Name="Prefetch"; Path="$env:WINDIR\Prefetch" },
+    @{ Name="Windows Update"; Path="$env:WINDIR\SoftwareDistribution\Download" }
 )
 
-Write-Section "Cleaning Temp Directories"
+# Analyze Before
+$totalInitial = 0
+foreach ($t in $targets) {
+    $size = Get-FolderSize $t.Path
+    $t.Size = $size
+    $totalInitial += $size
+    Write-Log "$($t.Name): $(Format-Size $size)" "Gray"
+}
 
-foreach ($folder in $folders) {
-    if (Test-Path $folder) {
-        Write-Log "Scanning $folder..."
-        $files = Get-ChildItem -Path $folder -Recurse -Force -ErrorAction SilentlyContinue
-        if ($files) {
-            $count = $files.Count
-            Write-Log "Removing $count items..." "Gray"
-            $files | ForEach-Object {
-                try {
-                    Remove-Item -Path $_.FullName -Force -Recurse -ErrorAction Stop
-                } catch {
-                    # Ignore locked files
-                }
-            }
-        }
+Write-Log "--------------------------------" "DarkGray"
+Write-Log "Total Potential Reclaim: $(Format-Size $totalInitial)" "White"
+Write-Log "--------------------------------" "DarkGray"
+
+if ($totalInitial -eq 0) {
+    Show-Info "Nothing to clean."
+    Pause-If-Interactive
+    exit
+}
+
+Write-Section "Execution"
+Write-Log "Closing applications is recommended." "Yellow"
+Start-Sleep -Seconds 2
+
+# Clean Targets
+foreach ($t in $targets) {
+    Write-Log "Cleaning $($t.Name)..." "Cyan"
+
+    # Special Handling
+    if ($t.Name -eq "Windows Update") {
+        Stop-ServiceSafe "wuauserv"
+        Stop-ServiceSafe "bits"
+    }
+
+    if (Test-Path $t.Path) {
+        Get-ChildItem -Path $t.Path -Recurse -Force -ErrorAction SilentlyContinue | Remove-Item -Force -Recurse -ErrorAction SilentlyContinue
+    }
+
+    if ($t.Name -eq "Windows Update") {
+        Start-Service "wuauserv" -ErrorAction SilentlyContinue
+        Start-Service "bits" -ErrorAction SilentlyContinue
     }
 }
 
-# Clear Prefetch
-Write-Section "Cleaning System Caches"
-Write-Log "Cleaning Prefetch..."
+# Clean Recycle Bin
 try {
-    Get-ChildItem -Path "$env:WINDIR\Prefetch" -Force -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+    Write-Log "Emptying Recycle Bin..." "Cyan"
+    Clear-RecycleBin -Force -ErrorAction SilentlyContinue
 } catch {}
 
-# Clear Windows Update Cache (SoftwareDistribution)
-try {
-    Write-Log "Cleaning Windows Update Cache..."
-    Stop-ServiceSafe "wuauserv"
-    Stop-ServiceSafe "bits"
-
-    $wdPath = "$env:WINDIR\SoftwareDistribution\Download"
-    if (Test-Path $wdPath) {
-        Get-ChildItem -Path $wdPath -Recurse -Force -ErrorAction SilentlyContinue | Remove-Item -Force -Recurse -ErrorAction SilentlyContinue
-        Write-Log "Windows Update downloads cleared." "Green"
-    }
-
-    Start-Service "wuauserv" -ErrorAction SilentlyContinue
-    Start-Service "bits" -ErrorAction SilentlyContinue
-} catch {
-    Show-Error "Failed to clear Windows Update cache: $($_.Exception.Message)"
+Write-Section "Results"
+$totalFinal = 0
+foreach ($t in $targets) {
+    $size = Get-FolderSize $t.Path
+    $totalFinal += $size
 }
 
-Show-Success "Cleanup Complete."
+$reclaimed = $totalInitial - $totalFinal
+if ($reclaimed -lt 0) { $reclaimed = 0 } # Sanity check
+
+Show-Success "Space Reclaimed: $(Format-Size $reclaimed)"
+
 Pause-If-Interactive
