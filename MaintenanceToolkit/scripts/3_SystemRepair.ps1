@@ -5,8 +5,17 @@ Get-SystemSummary
 Write-Log "This process may take 15-30 minutes. Do not close this window." "Yellow"
 
 try {
+    # 0. Fast Check Health
+    Write-Section "Step 0: Quick Image Health Check"
+    $check = Start-Process -FilePath "dism.exe" -ArgumentList "/Online /Cleanup-Image /CheckHealth" -Wait -NoNewWindow -PassThru
+    if ($check.ExitCode -ne 0) {
+        Write-Log "Quick check flagged potential corruption. Proceeding to deep scan..." "Yellow"
+    } else {
+        Write-Log "Quick check passed." "Green"
+    }
+
     # 1. Check Image Health (DISM)
-    Write-Section "Step 1: Checking System Image Health (DISM)"
+    Write-Section "Step 1: Deep System Image Health (DISM)"
 
     # Check Internet for DISM /Online
     $dismArgs = "/Online /Cleanup-Image /ScanHealth"

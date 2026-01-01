@@ -191,11 +191,24 @@ namespace SystemMaintenance
             sidebarHeader.SendToBack();
 
             // Sidebar Footer
-            Panel sidebarFooter = new Panel { Dock = DockStyle.Bottom, Height = 50 };
+            Panel sidebarFooter = new Panel { Dock = DockStyle.Bottom, Height = 100 };
+
+            Button btnOpenScripts = CreateSidebarButton("OPEN_SCRIPTS", "📂 Scripts Folder");
+            btnOpenScripts.Dock = DockStyle.Top;
+            btnOpenScripts.Click -= SidebarButton_Click;
+            btnOpenScripts.Click += (s, e) => {
+                string path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "scripts");
+                if (!Directory.Exists(path)) path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "MaintenanceToolkit", "scripts");
+                if (Directory.Exists(path)) Process.Start(path);
+                else MessageBox.Show("Scripts folder not found.");
+            };
+
             btnDarkMode = CreateSidebarButton("TOGGLE THEME", "🌗 Toggle Theme");
-            btnDarkMode.Dock = DockStyle.Fill;
+            btnDarkMode.Dock = DockStyle.Bottom;
             btnDarkMode.Click -= SidebarButton_Click;
             btnDarkMode.Click += (s,e) => ToggleTheme();
+
+            sidebarFooter.Controls.Add(btnOpenScripts);
             sidebarFooter.Controls.Add(btnDarkMode);
             sidebarPanel.Controls.Add(sidebarFooter);
 
@@ -979,6 +992,13 @@ namespace SystemMaintenance
                     }
                 }
 
+                // Check Pending Reboot
+                bool reboot = false;
+                try { using (var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending")) { if (key != null) reboot = true; } } catch {}
+                try { using (var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired")) { if (key != null) reboot = true; } } catch {}
+
+                if (reboot) sb.AppendLine("STATUS: Pending Reboot (!)");
+
                 sb.AppendLine("--------------------------------------------------");
                 foreach (var drive in DriveInfo.GetDrives()) {
                     if (drive.IsReady && drive.DriveType == DriveType.Fixed) {
@@ -1076,6 +1096,8 @@ namespace SystemMaintenance
             categories["NETWORK"].Add(new ScriptInfo("67_WifiScanner.ps1", "Wi-Fi Scanner", "Scans for nearby Wi-Fi networks.", true));
             categories["NETWORK"].Add(new ScriptInfo("69_WlanReport.ps1", "Wireless Report", "Generates a detailed HTML Wi-Fi report."));
             categories["NETWORK"].Add(new ScriptInfo("71_FirewallAudit.ps1", "Firewall Audit", "Checks firewall profiles and rules."));
+            categories["NETWORK"].Add(new ScriptInfo("79_ProcessConnections.ps1", "Process Connections", "Lists apps using the network.", true));
+            categories["NETWORK"].Add(new ScriptInfo("80_FlushDNSCache.ps1", "Flush DNS Cache", "Quickly flushes DNS and ARP caches."));
 
             // SECURITY
             categories["SECURITY"].Add(new ScriptInfo("8_PrivacyHardening.ps1", "Privacy Hardening", "Disables telemetry and ad ID."));
@@ -1085,6 +1107,7 @@ namespace SystemMaintenance
             categories["SECURITY"].Add(new ScriptInfo("32_VerifyFileHash.ps1", "Verify File Hash", "Calculates SHA256 hash of a file.", true));
             categories["SECURITY"].Add(new ScriptInfo("42_AuditNonMsServices.ps1", "Audit Services", "Lists non-Microsoft running services."));
             categories["SECURITY"].Add(new ScriptInfo("48_AuditUserAccounts.ps1", "Audit Users", "Lists local user accounts."));
+            categories["SECURITY"].Add(new ScriptInfo("78_UserLoginHistory.ps1", "Login History", "Audits recent user logins.", true));
             categories["SECURITY"].Add(new ScriptInfo("49_SecureDelete.ps1", "Secure Delete", "Wipes a file (3 passes).", true, true));
             categories["SECURITY"].Add(new ScriptInfo("59_PanicButton.ps1", "Panic Button", "Mutes, clears clipboard, minimizes all."));
 
@@ -1094,6 +1117,7 @@ namespace SystemMaintenance
             categories["UTILS"].Add(new ScriptInfo("15_ClearEventLogs.ps1", "Clear Event Logs", "Clears all Windows Event Logs."));
             categories["UTILS"].Add(new ScriptInfo("23_FindLargeFiles.ps1", "Find Large Files", "Scans user profile for large files."));
             categories["UTILS"].Add(new ScriptInfo("26_ClearClipboard.ps1", "Clear Clipboard", "Wipes clipboard history."));
+            categories["UTILS"].Add(new ScriptInfo("77_ResetWindowsSearch.ps1", "Reset Search Index", "Rebuilds Windows Search database."));
             categories["UTILS"].Add(new ScriptInfo("27_CheckStability.ps1", "Check Stability", "Checks for recent crashes/BSODs."));
             categories["UTILS"].Add(new ScriptInfo("76_SystemStabilityScore.ps1", "Stability Score", "View System Stability Index history.", true));
             categories["UTILS"].Add(new ScriptInfo("28_GetBiosKey.ps1", "Get BIOS Key", "Retrieves OEM Windows Key."));

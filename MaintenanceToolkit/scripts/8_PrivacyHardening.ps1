@@ -47,6 +47,11 @@ try {
     Write-Log "Disabling Windows Consumer Features..."
     Set-RegKey -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent" -Name "DisableWindowsConsumerFeatures" -Value 1 -Type DWord
 
+    # 8. Disable Game DVR (Performance)
+    Write-Log "Disabling Game DVR (Background Recording)..."
+    Set-RegKey -Path "HKCU:\System\GameConfigStore" -Name "GameDVR_Enabled" -Value 0 -Type DWord
+    Set-RegKey -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\GameDVR" -Name "AllowGameDVR" -Value 0 -Type DWord
+
     Write-Section "Complete"
     Show-Success "Privacy settings applied."
     Write-Log "A restart is recommended for all policies to take effect." "Cyan"
