@@ -20,7 +20,7 @@ try {
         }
 
         $outFile = "$env:USERPROFILE\Desktop\Drivers_$(Get-Date -Format 'yyyyMMdd').txt"
-        $drivers | Format-Table -AutoSize | Out-String -Width 4096 | Out-File $outFile
+        $drivers | Format-Table -AutoSize | Out-String -Width 4096 | Out-File $outFile -Encoding UTF8
         Show-Success "Exported list to $outFile"
     } else {
         Show-Info "No third-party drivers found (or access denied)."

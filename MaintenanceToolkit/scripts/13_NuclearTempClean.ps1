@@ -53,8 +53,11 @@ foreach ($t in $targets) {
         }
     } finally {
         if ($t.Name -eq "Windows Update") {
-            Start-Service "wuauserv" -ErrorAction SilentlyContinue
-            Start-Service "bits" -ErrorAction SilentlyContinue
+            $wu = Get-CimInstance Win32_Service -Filter "Name='wuauserv'" -ErrorAction SilentlyContinue
+            if ($wu -and $wu.StartMode -ne "Disabled") { Start-Service "wuauserv" -ErrorAction SilentlyContinue }
+
+            $bits = Get-CimInstance Win32_Service -Filter "Name='bits'" -ErrorAction SilentlyContinue
+            if ($bits -and $bits.StartMode -ne "Disabled") { Start-Service "bits" -ErrorAction SilentlyContinue }
         }
     }
 }

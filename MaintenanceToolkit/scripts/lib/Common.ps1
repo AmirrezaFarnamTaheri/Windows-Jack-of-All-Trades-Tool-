@@ -41,7 +41,7 @@ function Show-Info ($Message) {
 }
 
 function Write-Diagnostic ($Message) {
-    if ($Global:VerbosePreference -eq 'Continue' -or $env:MAINTENANCE_DIAG -eq '1') {
+    if ($VerbosePreference -eq 'Continue' -or $env:MAINTENANCE_DIAG -eq '1') {
         Write-Log "[DIAG] $Message" "DarkGray"
     }
 }
@@ -188,12 +188,14 @@ function Stop-ServiceSafe ($ServiceName) {
 
 function Get-FolderSize ($Path) {
     if (-not (Test-Path $Path)) { return 0 }
-    $size = (Get-ChildItem $Path -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
+    $size = (Get-ChildItem $Path -Recurse -Force -File -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
     if ($size) { return $size } else { return 0 }
 }
 
 function Format-Size ($Bytes) {
-    if ($Bytes -gt 1GB) { return "$([math]::Round($Bytes / 1GB, 2)) GB" }
-    if ($Bytes -gt 1MB) { return "$([math]::Round($Bytes / 1MB, 2)) MB" }
-    return "$([math]::Round($Bytes / 1KB, 2)) KB"
+    if (-not $Bytes) { return "0 B" }
+    if ($Bytes -ge 1GB) { return "$([math]::Round($Bytes / 1GB, 2)) GB" }
+    if ($Bytes -ge 1MB) { return "$([math]::Round($Bytes / 1MB, 2)) MB" }
+    if ($Bytes -ge 1KB) { return "$([math]::Round($Bytes / 1KB, 2)) KB" }
+    return "$Bytes B"
 }
