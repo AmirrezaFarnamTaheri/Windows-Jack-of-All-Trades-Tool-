@@ -7,7 +7,8 @@ try {
     while ($true) {
         $t = Get-Date -Format "HH:mm:ss"
         try {
-            $ping = Test-Connection -ComputerName 8.8.8.8 -Count 1 -ErrorAction Stop
+            $TargetHost = "8.8.8.8"
+            $ping = Test-Connection -ComputerName $TargetHost -Count 1 -ErrorAction Stop
             Write-Host "[$t] Reply from $($ping.Address): time=$($ping.ResponseTime)ms" -ForegroundColor Green
         } catch {
             Write-Host "[$t] Request timed out." -ForegroundColor Red

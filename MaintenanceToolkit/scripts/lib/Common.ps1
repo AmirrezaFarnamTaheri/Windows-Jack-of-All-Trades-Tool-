@@ -29,7 +29,8 @@ function Pause-If-Interactive {
 
 function Test-IsConnected {
     try {
-        $ping = Test-Connection -ComputerName "8.8.8.8" -Count 1 -Quiet -ErrorAction SilentlyContinue
+        $TargetHost = "8.8.8.8"
+        $ping = Test-Connection -ComputerName $TargetHost -Count 1 -Quiet -ErrorAction SilentlyContinue
         if ($ping) { return $true }
     } catch {}
 
