@@ -128,5 +128,6 @@ function Stop-ServiceSafe ($ServiceName) {
         }
     } catch {
         Write-Log "Error stopping service ${ServiceName}: $($_.Exception.Message)" "Red"
+        throw
     }
 }
