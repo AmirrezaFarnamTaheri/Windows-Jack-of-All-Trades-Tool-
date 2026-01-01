@@ -377,6 +377,13 @@ namespace SystemMaintenance
                 dashboardPanel.Controls.Add(infoCard);
 
                 Label lblQuick = new Label { Text = "Quick Actions", Font = new Font("Segoe UI", 14F, FontStyle.Bold), AutoSize = true, Location = new Point(0, infoCard.Bottom + 20), ForeColor = isDarkMode ? colTextDark : colTextLight, Tag = "THEMEABLE" };
+
+                Button btnRefresh = new Button { Text = "↻", Size = new Size(30, 30), Location = new Point(150, infoCard.Bottom + 15), FlatStyle = FlatStyle.Flat, BackColor = Color.Transparent, ForeColor = colAccent };
+                btnRefresh.Click += (s, e) => {
+                     // Refresh Info
+                     lblInfo.Text = GetDetailedSystemInfo();
+                };
+                dashboardPanel.Controls.Add(btnRefresh);
                 dashboardPanel.Controls.Add(lblQuick);
 
                 FlowLayoutPanel quickFlow = new FlowLayoutPanel { Location = new Point(0, lblQuick.Bottom + 10), Width = dashboardPanel.Width, Height = 200, AutoScroll = false, Tag = "QUICK_FLOW" };
@@ -940,6 +947,16 @@ namespace SystemMaintenance
                     }
                 }
 
+                try {
+                    using (var searcher = new ManagementObjectSearcher("SELECT Name, DriverVersion FROM Win32_VideoController"))
+                    {
+                        foreach (var item in searcher.Get())
+                        {
+                            sb.AppendLine("GPU: " + item["Name"].ToString());
+                        }
+                    }
+                } catch {}
+
                 using (var searcher = new ManagementObjectSearcher("SELECT TotalVisibleMemorySize, FreePhysicalMemory FROM Win32_OperatingSystem"))
                 {
                     foreach (var item in searcher.Get())
@@ -1032,6 +1049,7 @@ namespace SystemMaintenance
             categories["HARDWARE"].Add(new ScriptInfo("52_ReadChkdskLogs.ps1", "Read Chkdsk Logs", "Reads the latest Check Disk result from logs."));
             categories["HARDWARE"].Add(new ScriptInfo("64_CheckVirtualization.ps1", "Check Virtualization", "Checks if VT-x/AMD-V is enabled."));
             categories["HARDWARE"].Add(new ScriptInfo("65_DisableUsbSuspend.ps1", "Disable USB Suspend", "Fixes USB lag issues."));
+            categories["HARDWARE"].Add(new ScriptInfo("66_HardwareMonitor.ps1", "Hardware Monitor", "Real-time CPU/RAM/Disk monitor.", true));
 
             // NETWORK
             categories["NETWORK"].Add(new ScriptInfo("7_NetworkReset.ps1", "Network Reset", "Flushes DNS and resets IP/Winsock."));
@@ -1041,6 +1059,7 @@ namespace SystemMaintenance
             categories["NETWORK"].Add(new ScriptInfo("47_NetworkHeartbeat.ps1", "Network Heartbeat", "Monitors ping and packet loss.", true));
             categories["NETWORK"].Add(new ScriptInfo("53_OptimizeNetwork.ps1", "Optimize Internet", "Tunes TCP receive window."));
             categories["NETWORK"].Add(new ScriptInfo("58_BlockWebsite.ps1", "Block Website", "Blocks a domain via Hosts file.", true));
+            categories["NETWORK"].Add(new ScriptInfo("67_WifiScanner.ps1", "Wi-Fi Scanner", "Scans for nearby Wi-Fi networks.", true));
 
             // SECURITY
             categories["SECURITY"].Add(new ScriptInfo("8_PrivacyHardening.ps1", "Privacy Hardening", "Disables telemetry and ad ID."));
