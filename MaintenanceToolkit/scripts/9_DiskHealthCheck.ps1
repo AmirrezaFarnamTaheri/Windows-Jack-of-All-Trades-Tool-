@@ -1,8 +1,10 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
 Write-Header "Disk Health Check (S.M.A.R.T.)"
+Get-SystemSummary
 
 try {
+    Write-Section "Scan Results"
     $disks = Get-PhysicalDisk | Sort-Object DeviceId
     foreach ($disk in $disks) {
         $status = $disk.HealthStatus
@@ -27,6 +29,6 @@ try {
         }
     }
 } catch {
-    Write-Log "Error: $($_.Exception.Message)" "Red"
+    Show-Error "Error: $($_.Exception.Message)"
 }
 Pause-If-Interactive

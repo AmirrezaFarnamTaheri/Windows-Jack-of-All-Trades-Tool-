@@ -1,9 +1,12 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
 Write-Header "Applying Privacy & Telemetry Tweaks"
-Write-Log "Warning: Modifying Registry settings for privacy." "Yellow"
+Get-SystemSummary
+Write-Section "Warning"
+Write-Log "Modifying Registry settings for privacy." "Yellow"
 
 try {
+    Write-Section "Backing up Registry"
     # Only backup if keys exist to avoid errors
     if (Test-Path "HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection") {
         Backup-RegistryKey "HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection"
@@ -11,6 +14,8 @@ try {
     if (Test-Path "HKCU\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo") {
         Backup-RegistryKey "HKCU\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo"
     }
+
+    Write-Section "Applying Tweaks"
 
     # 1. Advertising ID
     Write-Log "Disabling Advertising ID..."
@@ -42,11 +47,12 @@ try {
     Write-Log "Disabling Windows Consumer Features..."
     Set-RegKey -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent" -Name "DisableWindowsConsumerFeatures" -Value 1 -Type DWord
 
-    Write-Log "--- Privacy Settings Applied ---" "Green"
+    Write-Section "Complete"
+    Show-Success "Privacy settings applied."
     Write-Log "A restart is recommended for all policies to take effect." "Cyan"
 
 } catch {
-    Write-Log "Error applying privacy settings: $($_.Exception.Message)" "Red" "ERROR"
+    Show-Error "Error applying privacy settings: $($_.Exception.Message)"
 }
 
 Pause-If-Interactive

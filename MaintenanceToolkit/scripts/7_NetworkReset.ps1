@@ -1,6 +1,8 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
 Write-Header "Resetting Network Stack"
+Get-SystemSummary
+Write-Section "Execution"
 
 try {
     Write-Log "Flushing DNS..."
@@ -22,8 +24,8 @@ try {
     Write-Log "Resetting Firewall..."
     netsh advfirewall reset
 
-    Write-Log "Network Reset Complete. A reboot is required." "Green"
+    Show-Success "Network Reset Complete. A reboot is required."
 } catch {
-    Write-Log "Error: $($_.Exception.Message)" "Red"
+    Show-Error "Error: $($_.Exception.Message)"
 }
 Pause-If-Interactive

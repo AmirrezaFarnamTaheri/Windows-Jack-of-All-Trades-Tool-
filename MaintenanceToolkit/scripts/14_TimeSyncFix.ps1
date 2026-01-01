@@ -1,6 +1,8 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
 Write-Header "Fixing Windows Time Synchronization"
+Get-SystemSummary
+Write-Section "Execution"
 
 try {
     Write-Log "Stopping Time Service..."
@@ -14,8 +16,8 @@ try {
     Write-Log "Resyncing..."
     w32tm /resync /nowait
 
-    Write-Log "Time Sync Repair Complete." "Green"
+    Show-Success "Time Sync Repair Complete."
 } catch {
-    Write-Log "Error: $($_.Exception.Message)" "Red"
+    Show-Error "Error: $($_.Exception.Message)"
 }
 Pause-If-Interactive

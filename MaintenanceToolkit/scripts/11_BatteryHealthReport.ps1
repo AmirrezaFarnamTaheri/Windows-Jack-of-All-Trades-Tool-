@@ -1,20 +1,22 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
 Write-Header "Generating Battery Health Report"
+Get-SystemSummary
 
 try {
+    Write-Section "Analysis"
     $path = "$env:TEMP\battery-report.html"
     Write-Log "Running powercfg /batteryreport..."
     powercfg /batteryreport /output "$path" /duration 14
 
     if (Test-Path $path) {
-        Write-Log "Report generated at $path" "Green"
+        Show-Success "Report generated at $path"
         # Open with default browser
         Start-Process "$path"
     } else {
-        Write-Log "Failed to generate report." "Red"
+        Show-Error "Failed to generate report."
     }
 } catch {
-    Write-Log "Error: $($_.Exception.Message)" "Red"
+    Show-Error "Error: $($_.Exception.Message)"
 }
 Pause-If-Interactive
