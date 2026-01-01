@@ -6,18 +6,28 @@ Write-Section "Scan Results"
 
 try {
     $services = Get-Service | Where-Object { $_.Status -eq 'Running' }
-    $count = 0
+    $nonMsServices = @()
+
     foreach ($s in $services) {
-        # Check DisplayName or Company via WMI if needed, but simple filter is good start
         if ($s.DisplayName -notmatch "Microsoft" -and $s.DisplayName -notmatch "Windows") {
-            Write-Log "Service: $($s.Name) ($($s.DisplayName))" "White"
-            $count++
+            $nonMsServices += [PSCustomObject]@{
+                Name = $s.Name
+                DisplayName = $s.DisplayName
+                Status = "<span class='status-pass'>Running</span>"
+                Type = $s.ServiceType
+            }
         }
     }
 
-    Write-Section "Summary"
-    if ($count -gt 0) {
-        Show-Success "Found $count running non-Microsoft services."
+    if ($nonMsServices.Count -gt 0) {
+        New-Report "Non-Microsoft Service Audit"
+        Add-ReportSection "Running Third-Party Services ($($nonMsServices.Count))" $nonMsServices "Table"
+
+        $outFile = "$env:USERPROFILE\Desktop\ServiceAudit_$(Get-Date -Format 'yyyyMMdd_HHmm').html"
+        Export-Report-Html $outFile
+
+        Show-Success "Found $($nonMsServices.Count) services. Report saved to $outFile"
+        Invoke-Item $outFile
     } else {
         Show-Success "No obvious non-Microsoft services running."
     }

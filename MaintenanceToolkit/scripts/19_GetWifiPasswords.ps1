@@ -1,31 +1,40 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
-Write-Header "Retrieving Saved Wi-Fi Passwords"
+Write-Header "Wi-Fi Password Recovery"
 Get-SystemSummary
-Write-Section "Saved Networks"
+Write-Section "Scanning Saved Profiles"
 
 try {
     $profiles = netsh wlan show profiles | Select-String "All User Profile" | ForEach-Object { $_.ToString().Split(":")[1].Trim() }
 
     if ($profiles) {
+        $wifiList = @()
         foreach ($p in $profiles) {
-            $info = netsh wlan show profile name="$p" key=clear
-            $keyLine = $info | Select-String "Key Content"
-
-            if ($keyLine) {
-                $pass = $keyLine.ToString().Split(":")[1].Trim()
-                Write-Log "SSID: $p" "Cyan"
-                Write-Log "Pass: $pass" "Green"
-                Write-Host "----------------------------------------" -ForegroundColor DarkGray
-            } else {
-                Write-Log "SSID: $p" "Gray"
-                Write-Log "Pass: (Open/No Key)" "DarkGray"
-                Write-Host "----------------------------------------" -ForegroundColor DarkGray
+            $pass = "N/A"
+            $out = netsh wlan show profile name="$p" key=clear
+            $line = $out | Select-String "Key Content"
+            if ($line) {
+                $pass = $line.ToString().Split(":")[1].Trim()
             }
+
+            $wifiList += [PSCustomObject]@{
+                SSID = $p
+                Password = $pass
+            }
+            Write-Log "Profile: $p | Key found." "Cyan"
         }
-        Show-Success "Scan complete."
+
+        New-Report "Wi-Fi Password Recovery"
+        Add-ReportSection "Saved Networks" $wifiList "Table"
+        Add-ReportSection "Security Note" "This report contains sensitive cleartext passwords. Delete this file after use." "Text"
+
+        $outFile = "$env:USERPROFILE\Desktop\WifiKeys_$(Get-Date -Format 'yyyyMMdd_HHmm').html"
+        Export-Report-Html $outFile
+
+        Show-Success "Report saved to $outFile"
+        Invoke-Item $outFile
     } else {
-        Write-Log "No Wi-Fi profiles found." "Yellow"
+        Show-Error "No Wi-Fi profiles found."
     }
 
 } catch {

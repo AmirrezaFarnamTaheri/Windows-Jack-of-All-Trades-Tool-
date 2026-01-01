@@ -362,7 +362,10 @@ namespace SystemMaintenance
         {
             currentCategory = category;
 
+            // Use SuspendLayout to prevent flickering during heavy UI updates
+            this.SuspendLayout();
             scriptsPanel.SuspendLayout();
+
             // Just remove controls from view, do not dispose cached cards!
             scriptsPanel.Controls.Clear();
 
@@ -393,50 +396,60 @@ namespace SystemMaintenance
             }
 
             ChkBatchMode_CheckedChanged(null, null); // Re-apply batch visibility
-            scriptsPanel.ResumeLayout();
+            scriptsPanel.ResumeLayout(true);
+            this.ResumeLayout(true);
         }
 
         private void RenderDashboard()
         {
+            // Re-create dashboard panel if missing or if we want to ensure fresh layout
             if (dashboardPanel == null) {
-                dashboardPanel = new Panel { Width = Math.Max(100, scriptsPanel.Width - 40), AutoSize = true };
+                dashboardPanel = new Panel { Width = Math.Max(100, scriptsPanel.Width - 40), AutoSize = true, Padding = new Padding(0,0,0,20) };
 
-                Label lblHeader = new Label { Text = "System Overview", Font = new Font("Segoe UI", 16F, FontStyle.Bold), AutoSize = true, Location = new Point(0, 0), ForeColor = isDarkMode ? colTextDark : colTextLight, Tag = "THEMEABLE" };
+                // Header Section
+                Label lblHeader = new Label { Text = "System Dashboard", Font = new Font("Segoe UI", 20F, FontStyle.Light), AutoSize = true, Location = new Point(0, 0), ForeColor = isDarkMode ? colTextDark : colTextLight, Tag = "THEMEABLE" };
                 dashboardPanel.Controls.Add(lblHeader);
+
+                Button btnRefresh = new Button { Text = "↻ Refresh Stats", Size = new Size(120, 30), Location = new Point(dashboardPanel.Width - 130, 10), FlatStyle = FlatStyle.Flat, BackColor = colAccent, ForeColor = Color.White };
+                btnRefresh.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+
+                dashboardPanel.Controls.Add(btnRefresh);
 
                 // System Info Card
                 Panel infoCard = new Panel {
-                    Location = new Point(0, 40),
-                    Size = new Size(dashboardPanel.Width, 150),
+                    Location = new Point(0, 50),
+                    Size = new Size(dashboardPanel.Width, 220), // Slightly taller for more info
                     BackColor = isDarkMode ? colCardDark : colCardLight,
                     Tag = "THEMEABLE_CARD"
                 };
+
                 Label lblInfo = new Label {
                     Text = GetDetailedSystemInfo(),
                     Font = new Font("Consolas", 10F),
                     AutoSize = true,
-                    Location = new Point(10, 10),
-                    ForeColor = isDarkMode ? colTextDark : colTextLight, // Better contrast in card
+                    Location = new Point(20, 20),
+                    ForeColor = isDarkMode ? colTextDark : colTextLight,
                     Tag = "THEMEABLE"
                 };
                 infoCard.Controls.Add(lblInfo);
                 dashboardPanel.Controls.Add(infoCard);
 
-                Label lblQuick = new Label { Text = "Quick Actions", Font = new Font("Segoe UI", 14F, FontStyle.Bold), AutoSize = true, Location = new Point(0, infoCard.Bottom + 20), ForeColor = isDarkMode ? colTextDark : colTextLight, Tag = "THEMEABLE" };
-
-                Button btnRefresh = new Button { Text = "↻", Size = new Size(30, 30), Location = new Point(150, infoCard.Bottom + 15), FlatStyle = FlatStyle.Flat, BackColor = Color.Transparent, ForeColor = colAccent };
+                // Wire up refresh
                 btnRefresh.Click += (s, e) => {
-                     // Refresh Info
+                     lblInfo.Text = "Refreshing...";
+                     Application.DoEvents(); // Force UI update
                      lblInfo.Text = GetDetailedSystemInfo();
                 };
-                dashboardPanel.Controls.Add(btnRefresh);
+
+                // Quick Actions Section
+                Label lblQuick = new Label { Text = "Quick Maintenance", Font = new Font("Segoe UI", 14F, FontStyle.Regular), AutoSize = true, Location = new Point(0, infoCard.Bottom + 25), ForeColor = isDarkMode ? colTextDark : colTextLight, Tag = "THEMEABLE" };
                 dashboardPanel.Controls.Add(lblQuick);
 
-                FlowLayoutPanel quickFlow = new FlowLayoutPanel { Location = new Point(0, lblQuick.Bottom + 10), Width = dashboardPanel.Width, Height = 200, AutoScroll = false, Tag = "QUICK_FLOW" };
+                FlowLayoutPanel quickFlow = new FlowLayoutPanel { Location = new Point(0, lblQuick.Bottom + 15), Width = dashboardPanel.Width, Height = 180, AutoScroll = false, Tag = "QUICK_FLOW" };
 
-                string[] quickScripts = { "2_InstallCleaningTools.ps1", "9_DiskHealthCheck.ps1", "1_CreateRestorePoint.ps1", "6_OptimizeAndUpdate.ps1" };
+                // Added a few more useful quick actions
+                string[] quickScripts = { "70_DetailedSysInfo.ps1", "2_InstallCleaningTools.ps1", "1_CreateRestorePoint.ps1", "9_DiskHealthCheck.ps1" };
                 foreach(var s in quickScripts) {
-                    // Find script
                     ScriptInfo info = null;
                     foreach(var list in categories.Values) {
                         info = list.FirstOrDefault(x => x.FileName == s);
@@ -446,13 +459,14 @@ namespace SystemMaintenance
                 }
                 dashboardPanel.Controls.Add(quickFlow);
             }
-            // Update size just in case, ensuring safe value
-            if (scriptsPanel.Width > 40) dashboardPanel.Width = scriptsPanel.Width - 40;
 
-            // Ensure Quick Actions have current parent width
-            foreach(Control c in dashboardPanel.Controls) {
-                if (c is FlowLayoutPanel && c.Tag != null && c.Tag.ToString() == "QUICK_FLOW") {
-                    c.Width = dashboardPanel.Width;
+            // Layout Updates
+            if (scriptsPanel.Width > 40) {
+                dashboardPanel.Width = scriptsPanel.Width - 40;
+                // Update internal widths
+                foreach(Control c in dashboardPanel.Controls) {
+                    if (c.Tag != null && c.Tag.ToString() == "THEMEABLE_CARD") c.Width = dashboardPanel.Width;
+                    if (c.Tag != null && c.Tag.ToString() == "QUICK_FLOW") c.Width = dashboardPanel.Width;
                 }
             }
 
