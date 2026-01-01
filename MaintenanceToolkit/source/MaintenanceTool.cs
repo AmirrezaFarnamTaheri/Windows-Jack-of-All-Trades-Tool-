@@ -365,6 +365,8 @@ namespace SystemMaintenance
             // Use SuspendLayout to prevent flickering during heavy UI updates
             this.SuspendLayout();
             scriptsPanel.SuspendLayout();
+            bool wasAutoSize = scriptsPanel.AutoSize;
+            scriptsPanel.AutoSize = false;
 
             // Just remove controls from view, do not dispose cached cards!
             scriptsPanel.Controls.Clear();
@@ -395,6 +397,7 @@ namespace SystemMaintenance
                 }
             }
 
+            scriptsPanel.AutoSize = wasAutoSize;
             ChkBatchMode_CheckedChanged(null, null); // Re-apply batch visibility
             scriptsPanel.ResumeLayout(true);
             this.ResumeLayout(true);
@@ -439,19 +442,27 @@ namespace SystemMaintenance
                      btnRefresh.Enabled = false;
                      lblInfo.Text = "Refreshing system stats...";
 
-                     string stats = await Task.Run(() => GetDetailedSystemInfo());
+                     try {
+                         string stats = await Task.Run(() => GetDetailedSystemInfo());
 
-                     if (!dashboardPanel.IsDisposed && lblInfo.IsHandleCreated) {
-                        lblInfo.Text = stats;
+                         if (!IsDisposed && !dashboardPanel.IsDisposed && !lblInfo.IsDisposed && lblInfo.IsHandleCreated) {
+                            lblInfo.Text = stats;
+                         }
                      }
-                     btnRefresh.Enabled = true;
+                     finally {
+                         if (!IsDisposed && !btnRefresh.IsDisposed) {
+                             btnRefresh.Enabled = true;
+                         }
+                     }
                 };
 
                 // Initial Load (Async)
                 Task.Run(() => {
                     string stats = GetDetailedSystemInfo();
-                    if (!dashboardPanel.IsDisposed && lblInfo.IsHandleCreated) {
-                        lblInfo.Invoke((Action)(() => lblInfo.Text = stats));
+                    if (!IsDisposed && !dashboardPanel.IsDisposed && !lblInfo.IsDisposed && lblInfo.IsHandleCreated) {
+                        lblInfo.BeginInvoke((Action)(() => {
+                            if (!IsDisposed && !lblInfo.IsDisposed) lblInfo.Text = stats;
+                        }));
                     }
                 });
 

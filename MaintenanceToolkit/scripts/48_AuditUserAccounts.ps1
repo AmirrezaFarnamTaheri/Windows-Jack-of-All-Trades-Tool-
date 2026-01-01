@@ -14,7 +14,7 @@ try {
 
         $pwdReq = "Yes"
         if ($u.PasswordRequired -eq $false) {
-             $pwdReq = "<span class='status-fail'>NO (!))</span>"
+             $pwdReq = "<span class='status-fail'>NO (!)</span>"
         }
 
         $userReport += [PSCustomObject]@{
@@ -27,11 +27,11 @@ try {
         }
     }
 
-    New-Report "Local User Account Audit"
-    Add-ReportSection "Local Accounts" $userReport "Table"
+    $report = New-Report "Local User Account Audit"
+    $report | Add-ReportSection "Local Accounts" $userReport "Table"
 
     $outFile = "$env:USERPROFILE\Desktop\UserAudit_$(Get-Date -Format 'yyyyMMdd_HHmm').html"
-    Export-Report-Html $outFile
+    $report | Export-Report-Html $outFile
 
     Show-Success "Audit Complete. Report saved to $outFile"
     Invoke-Item $outFile

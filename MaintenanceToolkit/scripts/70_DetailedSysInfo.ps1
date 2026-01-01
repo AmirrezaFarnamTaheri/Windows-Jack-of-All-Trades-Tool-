@@ -7,11 +7,11 @@ Write-Section "Execution"
 try {
     Write-Log "Gathering System Information..." "Cyan"
 
-    New-Report "Detailed System Information"
+    $report = New-Report "Detailed System Information"
 
     # OS & Boot
     $os = Get-CimInstance Win32_OperatingSystem
-    Add-ReportSection "Operating System" @{
+    $report | Add-ReportSection "Operating System" @{
         "OS Name" = "$($os.Caption)"
         "Architecture" = "$($os.OSArchitecture)"
         "Version" = "$($os.Version)"
@@ -25,7 +25,7 @@ try {
     $ramTotal = [math]::Round($os.TotalVisibleMemorySize / 1MB, 2)
     $ramFree = [math]::Round($os.FreePhysicalMemory / 1MB, 2)
 
-    Add-ReportSection "Hardware Summary" @{
+    $report | Add-ReportSection "Hardware Summary" @{
         "Processor" = "$($cpu.Name)"
         "Cores / Threads" = "$($cpu.NumberOfCores) / $($cpu.NumberOfLogicalProcessors)"
         "Total RAM" = "$ramTotal GB"
@@ -38,7 +38,9 @@ try {
         $av = Get-CimInstance -Namespace root/SecurityCenter2 -ClassName AntivirusProduct -ErrorAction Stop
         if ($av) {
             foreach ($a in $av) {
-                $status = if ($a.productState -match "1$") {"Enabled"} else {"Disabled/Unknown"}
+                # productState is a bitmask. 0x1000 (4096) indicates it is enabled.
+                $isEnabled = ($a.productState -band 4096) -ne 0
+                $status = if ($isEnabled) {"Enabled"} else {"Disabled"}
                 $secInfo["Antivirus"] = "$($a.displayName) ($status)"
             }
         } else {
@@ -57,7 +59,7 @@ try {
         $secInfo["Secure Boot"] = "$secureBoot"
     } catch { $secInfo["Secure Boot"] = "Unknown/Legacy" }
 
-    Add-ReportSection "Security Status" $secInfo "KeyValue"
+    $report | Add-ReportSection "Security Status" $secInfo "KeyValue"
 
     # Storage & BitLocker
     $volList = @()
@@ -72,23 +74,23 @@ try {
                 EncryptionMethod = $v.EncryptionMethod
             }
         }
-        Add-ReportSection "BitLocker Status" $volList "Table"
+        $report | Add-ReportSection "BitLocker Status" $volList "Table"
     } else {
-        Add-ReportSection "BitLocker Status" "BitLocker management is not available or no protected volumes found."
+        $report | Add-ReportSection "BitLocker Status" "BitLocker management is not available or no protected volumes found."
     }
 
     # Network Adapters
     $netAdapters = Get-NetAdapter -Physical | Select-Object Name, InterfaceDescription, Status, MacAddress, LinkSpeed
-    Add-ReportSection "Network Adapters" $netAdapters "Table"
+    $report | Add-ReportSection "Network Adapters" $netAdapters "Table"
 
     # Services
     $services = Get-Service | Where-Object {$_.Status -eq 'Running'} | Select-Object Name, DisplayName, StartType | Sort-Object Name
     # Limiting for brevity in HTML if too long, but let's include all running
-    Add-ReportSection "Running Services" $services "Table"
+    $report | Add-ReportSection "Running Services" $services "Table"
 
     # Export
     $outFile = "$env:USERPROFILE\Desktop\SystemSpec_$(Get-Date -Format 'yyyyMMdd_HHmm').html"
-    Export-Report-Html $outFile
+    $report | Export-Report-Html $outFile
 
     Show-Success "Detailed system info exported to $outFile"
     Invoke-Item $outFile

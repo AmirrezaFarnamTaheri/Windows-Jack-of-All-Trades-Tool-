@@ -12,7 +12,7 @@ try {
     $historyCount = $searcher.GetTotalHistoryCount()
 
     if ($historyCount -gt 0) {
-        New-Report "Windows Update History"
+        $report = New-Report "Windows Update History"
 
         $history = $searcher.QueryHistory(0, $historyCount)
         $reportData = @()
@@ -40,10 +40,10 @@ try {
             }
         }
 
-        Add-ReportSection "Update History ($historyCount items)" $reportData "Table"
+        $report | Add-ReportSection "Update History ($historyCount items)" $reportData "Table"
 
         $outFile = "$env:USERPROFILE\Desktop\UpdateHistory_$(Get-Date -Format 'yyyyMMdd_HHmm').html"
-        Export-Report-Html $outFile
+        $report | Export-Report-Html $outFile
 
         Show-Success "History exported to $outFile"
         Invoke-Item $outFile

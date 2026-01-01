@@ -48,16 +48,20 @@ foreach ($name in $targets.Keys) {
 }
 
 if ($results.Count -gt 0) {
-    $sorted = $results | Sort-Object "Avg Response (ms)"
+    $sorted = $results |
+      Sort-Object @{ Expression = {
+        if ($_."Avg Response (ms)" -match '^\d') { [double]$_."Avg Response (ms)" }
+        else { [double]::MaxValue }
+      } }
 
-    New-Report "DNS Speed Benchmark"
-    Add-ReportSection "Benchmark Results" $sorted "Table"
+    $report = New-Report "DNS Speed Benchmark"
+    $report | Add-ReportSection "Benchmark Results" $sorted "Table"
 
-    $best = $sorted[0]
-    Add-ReportSection "Recommendation" "Based on this test, the fastest provider for you is <strong>$($best.Provider)</strong>." "RawHtml"
+    $best = $sorted | Where-Object { $_."Avg Response (ms)" -match '^\d' } | Select-Object -First 1
+    $report | Add-ReportSection "Recommendation" "Based on this test, the fastest provider for you is <strong>$($best.Provider)</strong>." "RawHtml"
 
     $outFile = "$env:USERPROFILE\Desktop\DNSBenchmark_$(Get-Date -Format 'yyyyMMdd_HHmm').html"
-    Export-Report-Html $outFile
+    $report | Export-Report-Html $outFile
 
     Show-Success "Report generated at $outFile"
     Invoke-Item $outFile

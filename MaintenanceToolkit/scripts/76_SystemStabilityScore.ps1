@@ -9,7 +9,7 @@ try {
     $metrics = Get-CimInstance Win32_ReliabilityStabilityMetrics -ErrorAction SilentlyContinue | Sort-Object TimeGenerated -Descending | Select-Object -First 30
 
     if ($metrics) {
-        New-Report "System Stability Index"
+        $report = New-Report "System Stability Index"
 
         $latest = $metrics[0]
         $score = $latest.SystemStabilityIndex
@@ -20,22 +20,29 @@ try {
         elseif ($score -ge 5) { $scoreHtml = "<span class='status-warn' style='font-size: 2em'>$score / 10</span>" }
         else { $scoreHtml = "<span class='status-fail' style='font-size: 2em'>$score / 10</span>" }
 
-        Add-ReportSection "Current Stability Score" $scoreHtml "RawHtml"
+        $report | Add-ReportSection "Current Stability Score" $scoreHtml "RawHtml"
 
         $history = @()
         foreach ($m in $metrics) {
+            $idx = 0
+            if ($null -ne $m.SystemStabilityIndex) {
+                $idx = [int][math]::Floor([double]$m.SystemStabilityIndex)
+            }
+            if ($idx -lt 0) { $idx = 0 }
+            if ($idx -gt 10) { $idx = 10 }
+
              $history += [PSCustomObject]@{
                  Date = $m.TimeGenerated
                  Index = $m.SystemStabilityIndex
                  # Simple visualization bar
-                 Graph = "|" * [int]$m.SystemStabilityIndex
+                 Graph = "|" * $idx
              }
         }
 
-        Add-ReportSection "30-Day History" $history "Table"
+        $report | Add-ReportSection "30-Day History" $history "Table"
 
         $outFile = "$env:USERPROFILE\Desktop\StabilityScore_$(Get-Date -Format 'yyyyMMdd_HHmm').html"
-        Export-Report-Html $outFile
+        $report | Export-Report-Html $outFile
 
         Show-Success "Stability report saved to $outFile"
         Invoke-Item $outFile

@@ -9,7 +9,7 @@ try {
     $tasks = Get-ScheduledTask | Where-Object { $_.Author -notmatch "Microsoft" -and $_.Author -notmatch "Windows" }
 
     if ($tasks) {
-        New-Report "Scheduled Task Audit (Non-Microsoft)"
+        $report = New-Report "Scheduled Task Audit (Non-Microsoft)"
 
         $taskData = @()
         foreach ($t in $tasks) {
@@ -30,10 +30,10 @@ try {
             }
         }
 
-        Add-ReportSection "Suspicious / Third-Party Tasks ($($tasks.Count))" $taskData "Table"
+        $report | Add-ReportSection "Suspicious / Third-Party Tasks ($($tasks.Count))" $taskData "Table"
 
         $outFile = "$env:USERPROFILE\Desktop\TaskAudit_$(Get-Date -Format 'yyyyMMdd_HHmm').html"
-        Export-Report-Html $outFile
+        $report | Export-Report-Html $outFile
 
         Show-Success "Found $($tasks.Count) non-Microsoft tasks. Report saved."
         Invoke-Item $outFile
