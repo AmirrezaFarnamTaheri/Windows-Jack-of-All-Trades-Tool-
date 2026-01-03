@@ -21,10 +21,15 @@ if (-not (Test-IsWingetAvailable)) {
 
 foreach ($name in $apps.Keys) {
     $id = $apps[$name]
-    $install = Read-Host "Install $name? (Y/N)"
-    if ($install -eq 'Y') {
+    do {
+        $install = (Read-Host "Install $name? (Y/N)").Trim()
+        if ([string]::IsNullOrWhiteSpace($install)) { $install = "N" }
+    } until ($install -match '^[YyNn]$')
+
+    if ($install -match '^[Yy]$') {
         Write-Log "Installing $name..." "Cyan"
         winget install --id $id -e --silent --accept-package-agreements --accept-source-agreements
+        if ($LASTEXITCODE -ne 0) { throw "Installation failed for $name (winget exit code $LASTEXITCODE)." }
     }
 }
 

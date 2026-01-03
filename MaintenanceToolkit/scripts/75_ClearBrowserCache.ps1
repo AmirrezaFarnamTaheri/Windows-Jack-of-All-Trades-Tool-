@@ -7,7 +7,7 @@ Write-Log "This will close all browsers and delete cache files." "Yellow"
 Write-Log "Cookies and History will NOT be deleted." "Cyan"
 
 $confirm = Read-Host "Type 'Y' to continue"
-if ($confirm -ne 'Y') { Exit }
+if ($confirm.Trim() -notmatch '^[Yy]$') { Exit }
 
 try {
     # 1. Chrome

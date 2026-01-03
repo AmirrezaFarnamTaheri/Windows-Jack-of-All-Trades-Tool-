@@ -143,6 +143,18 @@ namespace SystemMaintenance
             }
             scriptCardCache.Clear();
 
+            // Warn if interactive consoles may still be open
+            if (!e.Cancel && tempScriptDir != null)
+            {
+                bool interactiveLaunched = categories.Values.SelectMany(list => list)
+                    .Any(s => s.IsInteractive && File.Exists(Path.Combine(tempScriptDir, s.FileName)));
+                if (interactiveLaunched)
+                {
+                    MessageBox.Show("One or more interactive scripts may still be running in separate windows. Please close them if necessary.",
+                                    "Interactive Scripts Running", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
+            }
+
             // Cleanup temporary script directory
             if (tempScriptDir != null && Directory.Exists(tempScriptDir))
             {
@@ -956,6 +968,10 @@ namespace SystemMaintenance
                 int i=0;
                 foreach(var s in queue) {
                      if (batchCts.IsCancellationRequested) break;
+                     if (s.IsInteractive) {
+                         Invoke((Action)(() => Log(string.Format("[WARNING] Skipped interactive script \"{0}\" in batch.", s.DisplayName))));
+                         continue;
+                     }
                      statusLabel.Text = string.Format("Batch: ({0}/{1}) {2}", i+1, queue.Count, s.DisplayName);
                      await Task.Run(() => ExecuteScriptInternal(s));
                      i++;
@@ -992,6 +1008,13 @@ namespace SystemMaintenance
         private void Log(string msg) {
             if (txtLog.InvokeRequired) { txtLog.Invoke((Action)(()=>Log(msg))); return; }
             txtLog.AppendText(string.Format("[{0}] {1}\r\n", DateTime.Now.ToShortTimeString(), msg));
+
+            // Trim log to prevent memory overgrowth
+            const int MaxLines = 1000;
+            if (txtLog.Lines.Length > MaxLines) {
+                txtLog.Lines = txtLog.Lines.Skip(txtLog.Lines.Length - MaxLines).ToArray();
+            }
+
             txtLog.ScrollToCaret();
         }
 

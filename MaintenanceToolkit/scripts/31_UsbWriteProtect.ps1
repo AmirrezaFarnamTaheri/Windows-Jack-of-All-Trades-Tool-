@@ -4,13 +4,16 @@ Write-Header "USB Write Protection"
 Get-SystemSummary
 Write-Section "Configuration"
 
-$choice = Read-Host "Enable Write Protect (Y/N)?"
+do {
+    $choice = Read-Host "Enable USB Write Protection? (Y/N)"
+    if ([string]::IsNullOrWhiteSpace($choice)) { $choice = "N" }
+} until ($choice.ToUpper() -match '^(Y|N)$')
 
 try {
     $key = "HKLM:\SYSTEM\CurrentControlSet\Control\StorageDevicePolicies"
     if (-not (Test-Path $key)) { New-Item $key -Force | Out-Null }
 
-    if ($choice -eq "Y") {
+    if ($choice.ToUpper() -eq "Y") {
         Set-ItemProperty -Path $key -Name "WriteProtect" -Value 1 -Type DWord
         Show-Success "USB Write Protection ENABLED."
     } else {

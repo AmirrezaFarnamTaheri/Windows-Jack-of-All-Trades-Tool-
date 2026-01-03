@@ -13,7 +13,7 @@ try {
 
         $executablePath = $null
         # Regex to find a path to an .exe, handling quotes and spaces
-        if ($path -match '(?i)(".*?\.(?:exe|bat|cmd|vbs)"|[\w\:\\\/ -]++\.(?:exe|bat|cmd|vbs))') {
+        if ($path -match '(?i)(".*?\.(?:exe|bat|cmd|vbs)"|[\w\:\\\/ -]+\.(?:exe|bat|cmd|vbs))') {
             $executablePath = $matches[0].Trim('"')
         } else {
             # Fallback for paths without extensions (e.g., shortcuts)

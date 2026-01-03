@@ -5,7 +5,7 @@ Assert-Admin
 $ScriptPath = $PSScriptRoot
 
 function Run-Script ($Number) {
-    $script = Get-ChildItem "$ScriptPath\$Number*.ps1" | Select-Object -First 1
+    $script = Get-ChildItem "$ScriptPath\$Number`_*.ps1" | Select-Object -First 1
     if ($script) {
         Clear-Host
         Write-Log "Launching: $($script.Name)..." "Cyan"
@@ -19,7 +19,7 @@ function Run-Script ($Number) {
 function Show-Header {
     Clear-Host
     Write-Host "======================================================" -ForegroundColor Cyan
-    Write-Host "      ULTIMATE SYSTEM MAINTENANCE TOOLKIT (v65)       " -ForegroundColor White
+    Write-Host "      ULTIMATE SYSTEM MAINTENANCE TOOLKIT (v80)       " -ForegroundColor White
     Write-Host "======================================================" -ForegroundColor Cyan
 }
 
@@ -47,6 +47,8 @@ function Show-SubMenu ($Category) {
             Write-Host "35. Scan Recycle Bin Content"
             Write-Host "45. Delete Empty Folders"
             Write-Host "50. Find Duplicate Files"
+            Write-Host "68. SSD Trim Optimization"
+            Write-Host "75. Clear Browser Cache"
         }
         "REPAIR" {
             Write-Section "REPAIR & FIXES"
@@ -88,6 +90,11 @@ function Show-SubMenu ($Category) {
             Write-Host "47. Network Heartbeat Monitor"
             Write-Host "53. Optimize Internet Speed"
             Write-Host "58. Block Website (Hosts)"
+            Write-Host "67. Wi-Fi Scanner (Nearby Networks)"
+            Write-Host "69. Wireless Network Report"
+            Write-Host "71. Firewall Audit (Rules Check)"
+            Write-Host "79. Process Connections (Netstat)"
+            Write-Host "80. Flush DNS Cache"
         }
         "SECURITY" {
             Write-Section "SECURITY & PRIVACY"
@@ -96,11 +103,11 @@ function Show-SubMenu ($Category) {
             Write-Host "24. Get BitLocker Keys"
             Write-Host "31. USB Write Protection"
             Write-Host "32. Verify File Hash"
-            Write-Host "33. Enable God Mode"
             Write-Host "42. Audit Non-Microsoft Services"
             Write-Host "48. Audit User Accounts"
             Write-Host "49. Securely Wipe File (DoD)"
             Write-Host "59. Panic Button (Hide All)"
+            Write-Host "78. User Login History"
         }
         "UTILS" {
             Write-Section "UTILITIES & TOOLS"
@@ -111,6 +118,7 @@ function Show-SubMenu ($Category) {
             Write-Host "27. Check System Stability (Crashes)"
             Write-Host "28. Get BIOS Windows Key"
             Write-Host "29. Process Freezer"
+            Write-Host "33. Enable God Mode"
             Write-Host "43. Analyze Boot Time"
             Write-Host "44. Export Installed App List"
             Write-Host "46. Quick Backup (Robocopy)"
@@ -120,6 +128,11 @@ function Show-SubMenu ($Category) {
             Write-Host "60. Emergency Restart"
             Write-Host "61. Check Activation Status"
             Write-Host "63. Install Essential Apps"
+            Write-Host "70. Export System Spec (Detailed Info)"
+            Write-Host "73. Startup Apps Manager"
+            Write-Host "74. Windows Update History"
+            Write-Host "76. System Stability Score"
+            Write-Host "77. Reset Windows Search Index"
         }
     }
     Write-Host "------------------------------------------------------" -ForegroundColor DarkGray
