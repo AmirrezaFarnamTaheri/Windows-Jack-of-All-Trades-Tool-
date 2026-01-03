@@ -10,22 +10,57 @@ $file = Read-Host "Enter full path to file"
 try {
     if (Test-Path $file -PathType Leaf) {
         Write-Section "Wiping"
-        Write-Log "Pass 1: Overwriting with Zeros..." "Gray"
-
-        # Simple overwrite implementation
         $len = (Get-Item $file).Length
-        $zeros = New-Object byte[] $len
-        [io.file]::WriteAllBytes($file, $zeros)
+        $chunkSize = 1048576 * 64  # 64 MB
+        $fs = [System.IO.File]::OpenWrite($file)
 
-        Write-Log "Pass 2: Overwriting with Ones..." "Gray"
-        $ones = New-Object byte[] $len
-        for($i=0;$i -lt $len;$i++){$ones[$i]=255}
-        [io.file]::WriteAllBytes($file, $ones)
+        try {
+            # Pass 1: Zeros
+            Write-Log "Pass 1: Overwriting with Zeros..." "Gray"
+            $zeroBuf = New-Object byte[] ([Math]::Min($chunkSize, $len))
+            # zeroBuf is already zeros
+            $written = 0L
+            $fs.Seek(0, "Begin") | Out-Null
+            while ($written -lt $len) {
+                $count = [Math]::Min($zeroBuf.Length, $len - $written)
+                $fs.Write($zeroBuf, 0, $count)
+                $written += $count
+            }
+            $fs.Flush()
 
-        Write-Log "Pass 3: Overwriting with Random Data..." "Gray"
-        $rng = New-Object byte[] $len
-        (New-Object Random).NextBytes($rng)
-        [io.file]::WriteAllBytes($file, $rng)
+            # Pass 2: Ones
+            Write-Log "Pass 2: Overwriting with Ones..." "Gray"
+            $oneBuf = New-Object byte[] $zeroBuf.Length
+            for($i=0; $i -lt $oneBuf.Length; $i++) { $oneBuf[$i] = 255 }
+
+            $written = 0L
+            $fs.Seek(0, "Begin") | Out-Null
+            while ($written -lt $len) {
+                $count = [Math]::Min($oneBuf.Length, $len - $written)
+                $fs.Write($oneBuf, 0, $count)
+                $written += $count
+            }
+            $fs.Flush()
+
+            # Pass 3: Random
+            Write-Log "Pass 3: Overwriting with Random Data..." "Gray"
+            $rnd = New-Object Random
+            $randBuf = New-Object byte[] $zeroBuf.Length
+
+            $written = 0L
+            $fs.Seek(0, "Begin") | Out-Null
+            while ($written -lt $len) {
+                $rnd.NextBytes($randBuf)
+                $count = [Math]::Min($randBuf.Length, $len - $written)
+                $fs.Write($randBuf, 0, $count)
+                $written += $count
+            }
+            $fs.Flush()
+
+        } finally {
+            $fs.Close()
+            $fs.Dispose()
+        }
 
         Write-Log "Deleting file..."
         Remove-Item $file -Force
