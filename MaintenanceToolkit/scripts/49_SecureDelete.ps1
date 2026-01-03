@@ -44,18 +44,18 @@ try {
 
             # Pass 3: Random
             Write-Log "Pass 3: Overwriting with Random Data..." "Gray"
-            $rnd = New-Object Random
+            $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
             $randBuf = New-Object byte[] $zeroBuf.Length
 
             $written = 0L
             $fs.Seek(0, "Begin") | Out-Null
             while ($written -lt $len) {
-                $rnd.NextBytes($randBuf)
+                $rng.GetBytes($randBuf)
                 $count = [Math]::Min($randBuf.Length, $len - $written)
                 $fs.Write($randBuf, 0, $count)
                 $written += $count
             }
-            $fs.Flush()
+            $fs.Flush($true)
 
         } finally {
             $fs.Close()

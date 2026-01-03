@@ -6,7 +6,7 @@ Write-Section "Warning"
 Write-Log "This will immediately restart the system. Unsaved work will be lost." "Red"
 
 $c = Read-Host "Type 'OK' to confirm"
-if ($c -match '^OK$') {
+if ($c.Trim() -ceq 'OK') {
     Stop-Computer -Force -Restart
 } else {
     Write-Log "Cancelled." "Yellow"
