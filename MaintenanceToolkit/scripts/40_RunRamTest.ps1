@@ -9,7 +9,7 @@ Write-Log "The test may take 15-30 minutes. Results will be shown in Windows Eve
 
 $choice = Read-Host "`nType 'Y' to RESTART and TEST NOW, or 'N' to cancel"
 
-if ($choice -eq 'Y') {
+if ($choice -match '^[Yy]$') {
     Write-Section "Scheduling Restart"
     try {
         # mdsched.exe /? shows standard switches, but typically it's interactive.
