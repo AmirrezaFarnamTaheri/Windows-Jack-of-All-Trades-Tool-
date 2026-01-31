@@ -1,54 +1,61 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
-Write-Header "Starting Deep Disk Cleanup"
+Write-Header "Deep Disk Cleanup"
 Get-SystemSummary
 
 try {
-    # Measure Free Space Before
-    $drive = Get-PSDrive C
-    $freeBefore = $drive.Free
-    Write-Log "Free Space Before: $([math]::Round($freeBefore/1MB, 2)) MB" "Gray"
+    # 1. Measurement
+    $drive = Get-PSDrive C -ErrorAction SilentlyContinue
+    $freeBefore = if ($drive) { $drive.Free } else { 0 }
 
-    Write-Section "Configuration"
-    # This sets registry keys to select all cleanup options
-    Write-Log "Configuring cleanup settings in Registry..." "Yellow"
+    if ($freeBefore -gt 0) {
+        Write-Log "Free Space Before: $(Format-Size $freeBefore)" "Gray"
+    }
+
+    # 2. Configuration (StateFlags0001)
+    Write-Section "Configuring Cleanup Options"
+    Write-Log "Setting registry flags for 'SAGERUN:1'..." "Yellow"
+
     $cleanmgrKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\VolumeCaches"
-
     if (Test-Path $cleanmgrKey) {
         Get-ChildItem $cleanmgrKey | ForEach-Object {
             try {
-                New-ItemProperty -Path $_.PSPath -Name StateFlags0001 -Value 2 -PropertyType DWord -Force -ErrorAction Stop | Out-Null
+                # StateFlags0001 = 2 (Pre-selected)
+                Set-RegKey -Path $_.PSPath -Name "StateFlags0001" -Value 2 -Type DWord -Force
             } catch {
-                Write-Log "Warning: Could not set flag for $($_.PSChildName). Continuing..." "Yellow"
+                Write-Log "Warning: Could not set flag for $($_.PSChildName). Skipping." "DarkGray"
             }
         }
     } else {
-        throw "VolumeCaches registry key not found."
+        throw "Registry key '$cleanmgrKey' not found. This Windows version may differ."
     }
 
-    Write-Section "Execution"
-    # Run Disk Cleanup silently with these settings
-    Write-Log "Running Disk Cleanup Tool (cleanmgr.exe)..." "Green"
+    # 3. Execution
+    Write-Section "Running Cleanup"
+    Write-Log "Launching Windows Disk Cleanup (cleanmgr.exe)..." "Cyan"
+    Write-Log "This may take several minutes. Please wait." "White"
 
-    # /sagerun:1 reads the flags we set above
-    # We wait for it to finish to check space
-    $process = Start-Process cleanmgr.exe -ArgumentList "/sagerun:1" -PassThru -NoNewWindow -Wait
+    $p = Start-Process cleanmgr.exe -ArgumentList "/sagerun:1" -PassThru -NoNewWindow -Wait
 
-    # Measure Free Space After
-    $drive = Get-PSDrive C
-    $freeAfter = $drive.Free
-    $saved = $freeAfter - $freeBefore
+    # 4. Result
+    $drive = Get-PSDrive C -ErrorAction SilentlyContinue
+    $freeAfter = if ($drive) { $drive.Free } else { 0 }
 
-    Write-Log "Free Space After:  $([math]::Round($freeAfter/1MB, 2)) MB" "Gray"
+    if ($freeBefore -gt 0 -and $freeAfter -gt 0) {
+        $saved = $freeAfter - $freeBefore
+        Write-Log "Free Space After:  $(Format-Size $freeAfter)" "Gray"
 
-    if ($saved -gt 0) {
-        Show-Success "Cleanup finished. Recovered $([math]::Round($saved/1MB, 2)) MB."
+        if ($saved -gt 0) {
+            Show-Success "Cleanup Completed. Recovered: $(Format-Size $saved)"
+        } else {
+            Show-Info "Cleanup Completed. No significant space reclaimed."
+        }
     } else {
-        Write-Log "Cleanup finished. No significant space change detected." "White"
+        Show-Success "Cleanup Completed."
     }
 
 } catch {
-    Show-Error "Error during Disk Cleanup: $($_.Exception.Message)"
+    Show-Error "Deep Cleanup Failed: $($_.Exception.Message)"
 }
 
 Pause-If-Interactive

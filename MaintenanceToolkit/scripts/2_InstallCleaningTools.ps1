@@ -12,17 +12,15 @@ if (-not (Test-IsWingetAvailable)) {
 }
 
 try {
-    Write-Section "Installing Malwarebytes"
-    winget install --id Malwarebytes.Malwarebytes -e --silent --accept-package-agreements --accept-source-agreements
-    if ($LASTEXITCODE -ne 0) { throw "Malwarebytes installation failed with exit code $LASTEXITCODE." }
+    Write-Section "Installing Cleaning Tools"
 
-    Write-Section "Installing BleachBit"
-    winget install --id BleachBit.BleachBit -e --silent --accept-package-agreements --accept-source-agreements
-    if ($LASTEXITCODE -ne 0) { throw "BleachBit installation failed with exit code $LASTEXITCODE." }
+    # Use the new robust wrapper from Common.ps1
+    Install-WingetApp -Id "Malwarebytes.Malwarebytes" -Name "Malwarebytes"
+    Install-WingetApp -Id "BleachBit.BleachBit" -Name "BleachBit"
 
     Write-Section "Installation Complete"
-    Show-Success "Tools installed successfully."
-    Write-Log "Please open 'Malwarebytes' and run an initial scan." "Magenta"
+    Show-Success "Tools check completed."
+    Write-Log "Recommendation: Open 'Malwarebytes' and run an initial scan." "Magenta"
 } catch {
     Show-Error "Installation error: $($_.Exception.Message)"
 }

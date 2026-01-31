@@ -2,46 +2,57 @@
 Assert-Admin
 Write-Header "Wi-Fi Password Recovery"
 Get-SystemSummary
-Write-Section "Scanning Saved Profiles"
 
 try {
-    $profiles = netsh wlan show profiles | Select-String "All User Profile" | ForEach-Object { $_.ToString().Split(":")[1].Trim() }
+    Write-Section "Scanning Saved Profiles"
 
-    if ($profiles) {
+    # Robust parsing of netsh output
+    $profiles = netsh wlan show profiles
+    $names = $profiles | Select-String "All User Profile" | ForEach-Object { $_.ToString().Split(":")[1].Trim() }
+
+    if ($names) {
         $wifiList = @()
-        foreach ($p in $profiles) {
+
+        foreach ($n in $names) {
             $pass = "N/A"
-            $out = netsh wlan show profile name="$p" key=clear
-            $line = $out | Select-String "Key Content"
-            if ($line) {
-                $pass = $line.ToString().Split(":")[1].Trim()
-            }
+            $auth = "Unknown"
+
+            # Get details with clear key
+            $info = netsh wlan show profile name="$n" key=clear
+
+            # Parse Password
+            $keyLine = $info | Select-String "Key Content"
+            if ($keyLine) { $pass = $keyLine.ToString().Split(":")[1].Trim() }
+
+            # Parse Auth Type
+            $authLine = $info | Select-String "Authentication"
+            if ($authLine) { $auth = $authLine.ToString().Split(":")[1].Trim() }
 
             $wifiList += [PSCustomObject]@{
-                SSID     = $p
+                SSID = $n
+                Authentication = $auth
                 Password = $pass
             }
-            if ($pass -ne "N/A") {
-                Write-Log "Profile: $p | Key: [REDACTED]" "Cyan"
-            } else {
-                Write-Log "Profile: $p | Open/No Key" "Gray"
-            }
+
+            # Console Security: Don't show password
+            Write-Log "Found: $n ($auth)" "Cyan"
         }
 
         $report = New-Report "Wi-Fi Password Recovery"
         $report | Add-ReportSection "Saved Networks" $wifiList "Table"
-        $report | Add-ReportSection "Security Note" "This report contains sensitive cleartext passwords. Delete this file after use." "Text"
+        $report | Add-ReportSection "Security Warning" "This file contains clear-text passwords. Delete securely after use." "Text"
 
         $outFile = "$env:USERPROFILE\Desktop\WifiKeys_$(Get-Date -Format 'yyyyMMdd_HHmm').html"
         $report | Export-Report-Html $outFile
 
-        Show-Success "Report saved to $outFile"
+        Show-Success "Exported to Desktop."
         Invoke-Item $outFile
     } else {
-        Show-Error "No Wi-Fi profiles found."
+        Show-Info "No Wi-Fi profiles found."
     }
 
 } catch {
     Show-Error "Error: $($_.Exception.Message)"
 }
+
 Pause-If-Interactive
