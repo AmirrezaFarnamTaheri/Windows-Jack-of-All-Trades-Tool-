@@ -116,6 +116,38 @@ function Test-IsWingetAvailable {
     return $false
 }
 
+function Install-WingetApp {
+    param(
+        [string]$Id,
+        [string]$Name
+    )
+
+    if (-not (Test-IsWingetAvailable)) {
+        Show-Error "Winget is not installed."
+        return $false
+    }
+
+    Write-Log "Checking $Name ($Id)..." "Cyan"
+
+    # Check if installed
+    $list = winget list --id $Id --exact -e 2>$null
+    if ($list -match $Id) {
+        Show-Success "$Name is already installed."
+        return $true
+    }
+
+    Write-Log "Installing $Name..." "Yellow"
+    winget install --id $Id -e --silent --accept-package-agreements --accept-source-agreements
+
+    if ($LASTEXITCODE -eq 0) {
+        Show-Success "$Name installed successfully."
+        return $true
+    } else {
+        Show-Error "Failed to install $Name (Exit Code: $LASTEXITCODE)."
+        return $false
+    }
+}
+
 function Assert-SystemRestoreEnabled {
     try {
         # Check if System Restore is enabled for C:

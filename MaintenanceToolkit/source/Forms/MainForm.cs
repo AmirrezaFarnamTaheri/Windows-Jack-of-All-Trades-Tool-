@@ -457,7 +457,7 @@ namespace SystemMaintenance.Forms
                 btnRefresh.Click += async (s, e) => {
                      btnRefresh.Enabled = false;
                      try {
-                         SystemStatsData stats = await Task.Run(() => SystemInfo.GetSystemStats());
+                         SystemStatsData stats = await SystemStatsService.Instance.GetStatsAsync();
                          if (!IsDisposed && !dashboardPanel.IsDisposed && infoCard.IsHandleCreated) {
                             Invoke((Action)(() => updateUI(stats)));
                          }
@@ -470,9 +470,9 @@ namespace SystemMaintenance.Forms
                      }
                 };
 
-                Task.Run(() => {
+                Task.Run(async () => {
                     try {
-                        SystemStatsData stats = SystemInfo.GetSystemStats();
+                        SystemStatsData stats = await SystemStatsService.Instance.GetStatsAsync();
                         if (!IsDisposed && !dashboardPanel.IsDisposed && infoCard.IsHandleCreated) {
                             Invoke((Action)(() => updateUI(stats)));
                         }
