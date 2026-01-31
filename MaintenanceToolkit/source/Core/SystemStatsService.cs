@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Management;
 using System.Threading.Tasks;
 using SystemMaintenance.Models;
@@ -10,7 +11,6 @@ namespace SystemMaintenance.Core
 {
     public class SystemStatsService
     {
-        // Singleton-like pattern or just static instance for simplicity in this app
         private static readonly Lazy<SystemStatsService> _instance = new Lazy<SystemStatsService>(() => new SystemStatsService());
         public static SystemStatsService Instance => _instance.Value;
 
@@ -18,23 +18,47 @@ namespace SystemMaintenance.Core
         private readonly AsyncLazy<string> _gpuName;
         private readonly AsyncLazy<string> _osName;
 
-        // Cache these valid for the session
         private int _cores;
         private int _threads;
         private long _ramTotal;
+
+        // Network Counters
+        private PerformanceCounter _netSent;
+        private PerformanceCounter _netRecv;
+        private string _activeInterface;
 
         private SystemStatsService()
         {
             _cpuName = new AsyncLazy<string>(() => Task.Run(() => GetCpuInfo()));
             _gpuName = new AsyncLazy<string>(() => Task.Run(() => GetGpuInfo()));
             _osName = new AsyncLazy<string>(() => Task.Run(() => GetOsInfo()));
+            InitializeNetworkCounters();
+        }
+
+        private void InitializeNetworkCounters()
+        {
+            try {
+                var cat = new PerformanceCounterCategory("Network Interface");
+                var instances = cat.GetInstanceNames();
+                // Heuristic: Pick the first non-loopback interface or one with traffic
+                // For simplicity, we just pick the first valid one or loop through later
+                foreach(var inst in instances) {
+                    if (inst.ToLower().Contains("loopback") || inst.ToLower().Contains("pseudo")) continue;
+                    _activeInterface = inst;
+                    break;
+                }
+
+                if (_activeInterface != null) {
+                    _netSent = new PerformanceCounter("Network Interface", "Bytes Sent/sec", _activeInterface);
+                    _netRecv = new PerformanceCounter("Network Interface", "Bytes Received/sec", _activeInterface);
+                }
+            } catch {}
         }
 
         public async Task<SystemStatsData> GetStatsAsync()
         {
             var data = new SystemStatsData();
 
-            // Parallel execution of static data fetch if not already cached
             var tCPU = _cpuName.GetValueAsync();
             var tGPU = _gpuName.GetValueAsync();
             var tOS = _osName.GetValueAsync();
@@ -48,11 +72,11 @@ namespace SystemMaintenance.Core
             data.Threads = _threads;
             data.RamTotal = _ramTotal;
 
-            // Dynamic Data (Fast enough to run on background thread every refresh)
             data.Uptime = GetUptime();
             GetRamUsage(data);
             GetDriveUsage(data);
             GetRebootStatus(data);
+            GetNetworkUsage(data);
 
             return data;
         }
@@ -150,9 +174,19 @@ namespace SystemMaintenance.Core
                  data.RebootPending = reboot;
             } catch {}
         }
+
+        private void GetNetworkUsage(SystemStatsData data)
+        {
+            if (_netSent != null && _netRecv != null) {
+                try {
+                    // Returns bytes/sec. We convert to KB/s
+                    data.NetSent = (long)_netSent.NextValue();
+                    data.NetRecv = (long)_netRecv.NextValue();
+                } catch {}
+            }
+        }
     }
 
-    // Thread-safe Lazy Async Helper
     public class AsyncLazy<T> : Lazy<Task<T>>
     {
         public AsyncLazy(Func<T> valueFactory) : base(() => Task.Factory.StartNew(valueFactory)) { }

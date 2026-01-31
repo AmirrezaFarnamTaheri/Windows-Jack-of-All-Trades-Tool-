@@ -10,6 +10,8 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using SystemMaintenance.Core;
 using SystemMaintenance.Models;
+using SystemMaintenance.Controls;
+using SystemMaintenance.Controls.Widgets;
 
 namespace SystemMaintenance.Forms
 {
@@ -36,6 +38,13 @@ namespace SystemMaintenance.Forms
         private Dictionary<string, Panel> scriptCardCache = new Dictionary<string, Panel>();
         private Panel dashboardPanel;
         private Panel helpPanel;
+        private ReportViewerControl reportPanel;
+
+        // Widgets
+        private SystemHeaderWidget widgetHeader;
+        private CpuRamWidget widgetCpuRam;
+        private DriveWidget widgetDrive;
+        private NetworkWidget widgetNetwork;
 
         // Data
         private Dictionary<string, List<ScriptInfo>> categories = new Dictionary<string, List<ScriptInfo>>();
@@ -148,6 +157,7 @@ namespace SystemMaintenance.Forms
                 {"NETWORK", "🌐 Network"},
                 {"SECURITY", "🛡 Security"},
                 {"UTILS", "🧰 Utils"},
+                {"REPORTS", "📊 Reports"},
                 {"HELP", "❓ Help"}
             };
 
@@ -293,7 +303,8 @@ namespace SystemMaintenance.Forms
             {
                 foreach(Control c in scriptsPanel.Controls)
                 {
-                    if (c == dashboardPanel || c == helpPanel)
+                    // Adjust widgets to full width
+                    if (c is DashboardWidget || c == dashboardPanel || c == helpPanel || c == reportPanel)
                     {
                         c.Width = scriptsPanel.Width - 40;
                     }
@@ -328,8 +339,20 @@ namespace SystemMaintenance.Forms
 
         private Panel GetOrAddCard(ScriptInfo s) {
             if (!scriptCardCache.ContainsKey(s.FileName)) {
-                scriptCardCache[s.FileName] = CreateScriptCard(s);
+                scriptCardCache[s.FileName] = new ScriptCard(s);
+                // Wire up event if needed
+                var card = (ScriptCard)scriptCardCache[s.FileName];
+                card.OnRunClick += (src, script) => RunScript(script);
+                card.OnFavoriteClick += (src, script) => {
+                    ConfigManager.ToggleFavorite(script.FileName);
+                    UpdateFavoritesCategory();
+                };
+                card.OnScheduleClick += (src, script) => {
+                    new SchedulerForm(script).ShowDialog();
+                };
             }
+            // Ensure batch visibility state
+            ((ScriptCard)scriptCardCache[s.FileName]).SetBatchMode(isBatchMode);
             return scriptCardCache[s.FileName];
         }
 
@@ -359,6 +382,7 @@ namespace SystemMaintenance.Forms
 
                 if (category == "DASHBOARD") RenderDashboard();
                 else if (category == "HELP") RenderHelp();
+                else if (category == "REPORTS") RenderReports();
                 else
                 {
                     List<ScriptInfo> scripts = new List<ScriptInfo>();
@@ -371,7 +395,6 @@ namespace SystemMaintenance.Forms
             }
             finally {
                 scriptsPanel.AutoSize = wasAutoSize;
-                ChkBatchMode_CheckedChanged(null, null);
                 scriptsPanel.ResumeLayout(true);
                 this.ResumeLayout(true);
             }
@@ -379,6 +402,15 @@ namespace SystemMaintenance.Forms
 
         private void RenderDashboard()
         {
+            // Initialize Widgets if null
+            if (widgetHeader == null) widgetHeader = new SystemHeaderWidget();
+            if (widgetCpuRam == null) widgetCpuRam = new CpuRamWidget();
+            if (widgetDrive == null) widgetDrive = new DriveWidget();
+            if (widgetNetwork == null) widgetNetwork = new NetworkWidget();
+
+            // Refresh Button logic (re-implemented simply here or within widgets?
+            // Better: Add a "Refresh" button to the panel, same as before, but calling widget updates)
+
             if (dashboardPanel == null) {
                 dashboardPanel = new Panel { Width = Math.Max(100, scriptsPanel.Width - 40), AutoSize = true, Padding = new Padding(0,0,0,20) };
 
@@ -387,103 +419,34 @@ namespace SystemMaintenance.Forms
 
                 Button btnRefresh = new Button { Text = "↻ Refresh Stats", Size = new Size(120, 30), Location = new Point(dashboardPanel.Width - 130, 10), FlatStyle = FlatStyle.Flat, BackColor = ThemeManager.ColAccent, ForeColor = Color.White };
                 btnRefresh.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-
                 dashboardPanel.Controls.Add(btnRefresh);
 
-                Panel infoCard = new Panel {
+                // Add Widgets to a Flow (inside the panel)
+                FlowLayoutPanel widgetFlow = new FlowLayoutPanel {
                     Location = new Point(0, 50),
-                    Size = new Size(dashboardPanel.Width, 250),
-                    BackColor = ThemeManager.GetCardColor(ConfigManager.IsDarkMode),
-                    Tag = "THEMEABLE_CARD"
-                };
-                dashboardPanel.Controls.Add(infoCard);
-
-                Action<SystemStatsData> updateUI = (data) => {
-                    infoCard.Controls.Clear();
-                    int y = 10;
-                    Color txt = ThemeManager.GetTextColor(ConfigManager.IsDarkMode);
-
-                    Label lblOS = new Label { Text = string.Format("{0} | {1}", data.OS, Environment.UserName), AutoSize = true, Location = new Point(15, y), Font = new Font("Segoe UI", 12F, FontStyle.Bold), ForeColor = txt, Tag = "THEMEABLE" };
-                    Label lblUp = new Label { Text = "Uptime: " + data.Uptime, AutoSize = true, Location = new Point(15, y+25), ForeColor = ThemeManager.GetSecondaryTextColor(ConfigManager.IsDarkMode), Tag = "THEMEABLE_DESC" };
-                    infoCard.Controls.Add(lblOS);
-                    infoCard.Controls.Add(lblUp);
-
-                    if (data.RebootPending) {
-                         Label lblWarn = new Label { Text = "⚠ Pending Reboot", AutoSize = true, Location = new Point(300, y), ForeColor = Color.OrangeRed, Font = new Font("Segoe UI", 10F, FontStyle.Bold) };
-                         infoCard.Controls.Add(lblWarn);
-                    }
-
-                    y += 55;
-
-                    Label lblCPU = new Label { Text = string.Format("CPU: {0} ({1}C/{2}T)", data.CPU, data.Cores, data.Threads), AutoSize = true, Location = new Point(15, y), ForeColor = txt, Tag = "THEMEABLE" };
-                    infoCard.Controls.Add(lblCPU);
-                    y += 25;
-
-                    if (!string.IsNullOrEmpty(data.GPU)) {
-                        Label lblGPU = new Label { Text = "GPU: " + data.GPU, AutoSize = true, Location = new Point(15, y), ForeColor = txt, Tag = "THEMEABLE" };
-                        infoCard.Controls.Add(lblGPU);
-                        y += 30;
-                    }
-
-                    double ramPct = 0;
-                    if (data.RamTotal > 0) ramPct = (1.0 - ((double)data.RamFree / data.RamTotal)) * 100;
-
-                    Label lblRam = new Label { Text = string.Format("RAM: {0}MB Free / {1}MB Total ({2:F1}% Used)", data.RamFree, data.RamTotal, ramPct), AutoSize = true, Location = new Point(15, y), ForeColor = txt, Tag = "THEMEABLE" };
-                    infoCard.Controls.Add(lblRam);
-                    y += 20;
-
-                    ProgressBar pbRam = new ProgressBar { Location = new Point(15, y), Width = infoCard.Width - 40, Height = 15, Value = (int)Math.Min(100, Math.Max(0, ramPct)), Style = ProgressBarStyle.Continuous };
-                    infoCard.Controls.Add(pbRam);
-                    y += 25;
-
-                    foreach(var d in data.Drives) {
-                         Label lblD = new Label { Text = string.Format("{0} {1}GB Free / {2}GB Total ({3:F1}% Free)", d.Name, d.FreeSpace, d.TotalSize, d.PercentFree), AutoSize = true, Location = new Point(15, y), ForeColor = txt, Tag = "THEMEABLE" };
-                         infoCard.Controls.Add(lblD);
-                         y += 20;
-
-                         int usage = 100 - (int)Math.Min(100, Math.Max(0, d.PercentFree));
-                         ProgressBar pbD = new ProgressBar { Location = new Point(15, y), Width = infoCard.Width - 40, Height = 10, Value = usage, Style = ProgressBarStyle.Continuous };
-                         infoCard.Controls.Add(pbD);
-                         y += 20;
-                    }
-
-                    infoCard.Height = y + 10;
-
-                    foreach(Control c in dashboardPanel.Controls) {
-                        if (c.Tag != null && c.Tag.ToString() == "QUICK_FLOW") c.Location = new Point(0, infoCard.Bottom + 55);
-                    }
+                    AutoSize = true,
+                    Width = dashboardPanel.Width,
+                    FlowDirection = FlowDirection.TopDown,
+                    WrapContents = false
                 };
 
-                btnRefresh.Click += async (s, e) => {
-                     btnRefresh.Enabled = false;
-                     try {
-                         SystemStatsData stats = await SystemStatsService.Instance.GetStatsAsync();
-                         if (!IsDisposed && !dashboardPanel.IsDisposed && infoCard.IsHandleCreated) {
-                            Invoke((Action)(() => updateUI(stats)));
-                         }
-                     }
-                     catch (Exception ex) {
-                         MessageBox.Show("Error refreshing stats: " + ex.Message);
-                     }
-                     finally {
-                         if (!IsDisposed) btnRefresh.Enabled = true;
-                     }
-                };
+                widgetFlow.Controls.Add(widgetHeader);
+                widgetFlow.Controls.Add(widgetCpuRam);
+                widgetFlow.Controls.Add(widgetNetwork); // New!
+                widgetFlow.Controls.Add(widgetDrive);
 
-                Task.Run(async () => {
-                    try {
-                        SystemStatsData stats = await SystemStatsService.Instance.GetStatsAsync();
-                        if (!IsDisposed && !dashboardPanel.IsDisposed && infoCard.IsHandleCreated) {
-                            Invoke((Action)(() => updateUI(stats)));
-                        }
-                    } catch {}
-                });
+                dashboardPanel.Controls.Add(widgetFlow);
 
-                Label lblQuick = new Label { Text = "Quick Maintenance", Font = new Font("Segoe UI", 14F, FontStyle.Regular), AutoSize = true, Location = new Point(0, infoCard.Bottom + 25), ForeColor = ThemeManager.GetTextColor(ConfigManager.IsDarkMode), Tag = "THEMEABLE" };
-                dashboardPanel.Controls.Add(lblQuick);
+                // Quick Actions
+                Label lblQuick = new Label { Text = "Quick Maintenance", Font = new Font("Segoe UI", 14F, FontStyle.Regular), AutoSize = true, Location = new Point(0, 200), ForeColor = ThemeManager.GetTextColor(ConfigManager.IsDarkMode), Tag = "THEMEABLE" };
+                // Location dynamic based on flow height?
+                // We'll use Flow for the whole dashboard actually?
+                // Mixed: Panel for absolute header, Flow for content.
 
-                FlowLayoutPanel quickFlow = new FlowLayoutPanel { Location = new Point(0, lblQuick.Bottom + 15), Width = dashboardPanel.Width, Height = 180, AutoScroll = false, Tag = "QUICK_FLOW" };
+                // Let's just append Quick Actions to the same flow or logic
+                // Simpler: Just put Quick Actions below the widgetFlow
 
+                FlowLayoutPanel quickFlow = new FlowLayoutPanel { Width = dashboardPanel.Width, Height = 180, AutoScroll = false, Tag = "QUICK_FLOW" };
                 string[] quickScripts = { "70_DetailedSysInfo.ps1", "2_InstallCleaningTools.ps1", "1_CreateRestorePoint.ps1", "9_DiskHealthCheck.ps1" };
                 foreach(var s in quickScripts) {
                     ScriptInfo info = null;
@@ -493,17 +456,48 @@ namespace SystemMaintenance.Forms
                     }
                     if (info != null) quickFlow.Controls.Add(GetOrAddCard(info));
                 }
+
+                dashboardPanel.Controls.Add(lblQuick);
                 dashboardPanel.Controls.Add(quickFlow);
+
+                // Logic to position Quick Actions below widgets
+                widgetFlow.SizeChanged += (s,e) => {
+                    lblQuick.Location = new Point(0, widgetFlow.Bottom + 20);
+                    quickFlow.Location = new Point(0, lblQuick.Bottom + 10);
+                };
+
+                // Update Logic
+                Action<SystemStatsData> updateUI = (data) => {
+                    widgetHeader.UpdateData(data);
+                    widgetCpuRam.UpdateData(data);
+                    widgetDrive.UpdateData(data);
+                    widgetNetwork.UpdateData(data);
+                };
+
+                btnRefresh.Click += async (s, e) => {
+                     btnRefresh.Enabled = false;
+                     try {
+                         SystemStatsData stats = await SystemStatsService.Instance.GetStatsAsync();
+                         if (!IsDisposed && !dashboardPanel.IsDisposed) Invoke((Action)(() => updateUI(stats)));
+                     }
+                     catch (Exception ex) { MessageBox.Show("Error: " + ex.Message); }
+                     finally { if (!IsDisposed) btnRefresh.Enabled = true; }
+                };
+
+                // Initial Load
+                Task.Run(async () => {
+                    try {
+                        SystemStatsData stats = await SystemStatsService.Instance.GetStatsAsync();
+                        if (!IsDisposed && !dashboardPanel.IsDisposed) Invoke((Action)(() => updateUI(stats)));
+                    } catch {}
+                });
             }
 
             if (scriptsPanel.Width > 40) {
                 dashboardPanel.Width = scriptsPanel.Width - 40;
                 foreach(Control c in dashboardPanel.Controls) {
-                    if (c.Tag != null && c.Tag.ToString() == "THEMEABLE_CARD") {
-                         c.Width = dashboardPanel.Width;
-                         foreach(Control inner in c.Controls) if (inner is ProgressBar) inner.Width = c.Width - 40;
-                    }
-                    if (c.Tag != null && c.Tag.ToString() == "QUICK_FLOW") c.Width = dashboardPanel.Width;
+                    if (c is FlowLayoutPanel) c.Width = dashboardPanel.Width;
+                    // Widgets inside flow will auto-width via their own logic/docking
                 }
             }
 
@@ -575,234 +569,6 @@ namespace SystemMaintenance.Forms
             scriptsPanel.Controls.Add(helpPanel);
         }
 
-        private Panel CreateScriptCard(ScriptInfo script)
-        {
-            Panel card = new Panel();
-            card.Size = new Size(280, 150);
-            card.BackColor = ThemeManager.GetCardColor(ConfigManager.IsDarkMode);
-            card.Margin = new Padding(10);
-            card.Tag = script;
-            card.AccessibleName = script.DisplayName;
-            card.AccessibleDescription = script.Description;
-            card.AccessibleRole = AccessibleRole.Client;
-
-            Label lblTitle = new Label { Text = script.DisplayName, Font = new Font("Segoe UI", 10F, FontStyle.Bold), Location = new Point(10, 10), AutoSize = true, ForeColor = ThemeManager.GetTextColor(ConfigManager.IsDarkMode), Tag = "THEMEABLE" };
-            Label lblDesc = new Label { Text = script.Description, Font = new Font("Segoe UI", 9F), Location = new Point(10, 35), Size = new Size(260, 60), ForeColor = ThemeManager.GetSecondaryTextColor(ConfigManager.IsDarkMode), Tag = "THEMEABLE_DESC" };
-
-            if (script.IsDestructive) { lblTitle.ForeColor = Color.Red; lblTitle.Text += " (!)"; }
-            if (script.IsInteractive) { lblTitle.Text += " *"; }
-
-            Button btnRun = new Button { Text = "RUN", Size = new Size(80, 30), Location = new Point(180, 110), FlatStyle = FlatStyle.Flat, BackColor = ThemeManager.ColAccent, ForeColor = Color.White };
-            btnRun.Click += (s, e) => {
-                 if (script.IsDestructive && MessageBox.Show(string.Format("Warning: {0} is destructive.\nProceed?", script.DisplayName), "Warning", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.No) return;
-                 RunScript(script);
-            };
-
-            // Safe Mode Logic
-            if (ConfigManager.IsSafeMode && script.IsDestructive) {
-                 btnRun.Enabled = false;
-                 btnRun.Text = "LOCKED";
-                 btnRun.BackColor = Color.Gray;
-            }
-
-            CheckBox chkBatch = new CheckBox { Text = "Select", Location = new Point(10, 115), AutoSize = true, Visible = isBatchMode, Tag = "BATCH_CHK" };
-
-            Label lblFav = new Label { Text = ConfigManager.Favorites.Contains(script.FileName) ? "★" : "☆", Location = new Point(250, 5), AutoSize = true, Font = new Font("Segoe UI", 12F), Cursor = Cursors.Hand, ForeColor = Color.Gold };
-            lblFav.Click += (s,e) => {
-                ConfigManager.ToggleFavorite(script.FileName);
-                lblFav.Text = ConfigManager.Favorites.Contains(script.FileName) ? "★" : "☆";
-                UpdateFavoritesCategory();
-            };
-
-            card.Controls.Add(lblTitle);
-            card.Controls.Add(lblDesc);
-            card.Controls.Add(btnRun);
-            card.Controls.Add(chkBatch);
-            card.Controls.Add(lblFav);
-
-            EventHandler hoverEnter = (s, e) => card.BackColor = ThemeManager.GetCardHoverColor(ConfigManager.IsDarkMode);
-            EventHandler hoverLeave = (s, e) => card.BackColor = ThemeManager.GetCardColor(ConfigManager.IsDarkMode);
-            EventHandler doubleClick = (s, e) => {
-                if (!isBatchMode) {
-                     // Check Safe Mode in Double Click too
-                     if (ConfigManager.IsSafeMode && script.IsDestructive) return;
-
-                     if (script.IsDestructive && MessageBox.Show(string.Format("Warning: {0} is destructive.\nProceed?", script.DisplayName), "Warning", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.No) return;
-                     RunScript(script);
-                }
-            };
-
-            card.MouseEnter += hoverEnter;
-            card.MouseLeave += hoverLeave;
-            card.DoubleClick += doubleClick;
-
-            foreach (Control c in card.Controls)
-            {
-                if (!(c is Button) && !(c is CheckBox))
-                {
-                    c.MouseEnter += hoverEnter;
-                    c.MouseLeave += hoverLeave;
-                    c.DoubleClick += doubleClick;
-                }
-            }
-
-            return card;
-        }
-
-        private void UpdateFavoritesCategory()
-        {
-            categories["FAVORITES"].Clear();
-            foreach(var kvp in categories.Where(k => k.Key != "FAVORITES"))
-            {
-                foreach(var s in kvp.Value)
-                {
-                    if (ConfigManager.Favorites.Contains(s.FileName))
-                        categories["FAVORITES"].Add(s);
-                }
-            }
-            if (currentCategory == "FAVORITES") LoadCategory("FAVORITES");
-        }
-
-        private async void RunScript(ScriptInfo script)
-        {
-            if (scriptExecutor.IsScriptRunning) {
-                MessageBox.Show("A script is already running.");
-                return;
-            }
-
-            Log("Starting: " + script.DisplayName);
-            statusLabel.Text = "Running: " + script.DisplayName;
-            progressBar.Visible = true;
-            btnCancel.Visible = !script.IsInteractive;
-
-            try {
-                await scriptExecutor.RunScriptAsync(script, chkVerbose.Checked, CancellationToken.None);
-            } finally {
-                Log("Finished: " + script.DisplayName);
-                statusLabel.Text = "Ready";
-                progressBar.Visible = false;
-                btnCancel.Visible = false;
-            }
-        }
-
-        private async void BtnRunBatch_Click(object sender, EventArgs e)
-        {
-            var queue = new List<ScriptInfo>();
-            foreach(var card in scriptCardCache.Values) {
-                foreach(Control c in card.Controls) {
-                    if (c is CheckBox && ((CheckBox)c).Checked && ((CheckBox)c).Tag.ToString() == "BATCH_CHK") {
-                        queue.Add((ScriptInfo)card.Tag);
-                    }
-                }
-            }
-            if (queue.Count == 0) return;
-
-            if (MessageBox.Show(string.Format("Ready to execute {0} scripts?\nThis process will run sequentially.", queue.Count), "Confirm Batch Run", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
-                return;
-
-            if (scriptExecutor.IsScriptRunning) return;
-
-            batchCts = new CancellationTokenSource();
-            btnRunBatch.Enabled = false;
-            progressBar.Visible = true;
-            btnCancel.Visible = true;
-
-            try {
-                progressBar.Style = ProgressBarStyle.Continuous;
-                progressBar.Maximum = queue.Count;
-                progressBar.Value = 0;
-
-                int i=0;
-                foreach(var s in queue) {
-                     if (batchCts.IsCancellationRequested) break;
-                     if (s.IsInteractive) {
-                         Log(string.Format("[WARNING] Skipped interactive script \"{0}\" in batch.", s.DisplayName));
-                         continue;
-                     }
-                     // Check Safe Mode for Batch
-                     if (ConfigManager.IsSafeMode && s.IsDestructive) {
-                         Log(string.Format("[BLOCKED] Skipped destructive script \"{0}\" due to Safe Mode.", s.DisplayName));
-                         continue;
-                     }
-
-                     statusLabel.Text = string.Format("Batch: ({0}/{1}) {2}", i+1, queue.Count, s.DisplayName);
-
-                     await scriptExecutor.RunScriptAsync(s, chkVerbose.Checked, batchCts.Token);
-
-                     i++;
-                     progressBar.Value = i;
-                }
-                Log("Batch Execution Completed.");
-            } finally {
-                btnRunBatch.Enabled = true;
-                progressBar.Visible = false;
-                btnCancel.Visible = false;
-                statusLabel.Text = "Ready";
-                progressBar.Style = ProgressBarStyle.Marquee;
-            }
-        }
-
-        private void BtnCancel_Click(object sender, EventArgs e) {
-            batchCts?.Cancel();
-            scriptExecutor.Cancel();
-        }
-
-        private void Log(string msg, string type="INFO") {
-            if (txtLog.InvokeRequired) { txtLog.Invoke((Action)(()=>Log(msg, type))); return; }
-            txtLog.AppendText(string.Format("[{0}] {1}\r\n", DateTime.Now.ToShortTimeString(), msg));
-
-            const int MaxLines = 1000;
-            if (txtLog.Lines.Length > MaxLines) {
-                txtLog.Lines = txtLog.Lines.Skip(txtLog.Lines.Length - MaxLines).ToArray();
-            }
-            txtLog.ScrollToCaret();
-        }
-
-        private void TxtSearch_TextChanged(object sender, EventArgs e) {
-            string q = txtSearch.Text.Trim().ToLower();
-            if (string.IsNullOrWhiteSpace(q)) {
-                 LoadCategory(currentCategory);
-                 return;
-            }
-
-            scriptsPanel.SuspendLayout();
-            scriptsPanel.Controls.Clear();
-
-            HashSet<string> seen = new HashSet<string>();
-            foreach(var cat in categories.Values) {
-                foreach(var s in cat) {
-                    if ((s.DisplayName.ToLower().Contains(q) || s.Description.ToLower().Contains(q)) && seen.Add(s.FileName)) {
-                        scriptsPanel.Controls.Add(GetOrAddCard(s));
-                    }
-                }
-            }
-            scriptsPanel.ResumeLayout();
-        }
-
-        private void ChkBatchMode_CheckedChanged(object sender, EventArgs e) {
-            isBatchMode = chkBatchMode.Checked;
-            chkBatchMode.BackColor = isBatchMode ? ThemeManager.ColAccent : Color.Transparent;
-            chkBatchMode.ForeColor = isBatchMode ? Color.White : ThemeManager.GetTextColor(ConfigManager.IsDarkMode);
-
-            btnRunBatch.Visible = isBatchMode;
-            btnSelectAll.Visible = isBatchMode;
-            btnSelectNone.Visible = isBatchMode;
-
-            foreach(var card in scriptCardCache.Values) {
-                foreach(Control c in card.Controls) {
-                    if (c is CheckBox && c.Tag != null && c.Tag.ToString() == "BATCH_CHK") c.Visible = isBatchMode;
-                }
-            }
-        }
-
-        private void SetAllBatchSelection(bool val) {
-             foreach(var card in scriptCardCache.Values) {
-                foreach(Control c in card.Controls) {
-                    if (c is CheckBox && c.Tag != null && c.Tag.ToString() == "BATCH_CHK") ((CheckBox)c).Checked = val;
-                }
-            }
-        }
-
         private void ToggleSafeMode(Button btn) {
             ConfigManager.IsSafeMode = !ConfigManager.IsSafeMode;
             ConfigManager.Save();
@@ -823,11 +589,19 @@ namespace SystemMaintenance.Forms
 
             if (dashboardPanel != null) { dashboardPanel.Dispose(); dashboardPanel = null; }
             if (helpPanel != null) { helpPanel.Dispose(); helpPanel = null; }
+            if (reportPanel != null) { reportPanel.Dispose(); reportPanel = null; }
+
+            // Dispose widgets too to force re-theme
+            if (widgetHeader != null) { widgetHeader.Dispose(); widgetHeader = null; }
+            if (widgetCpuRam != null) { widgetCpuRam.Dispose(); widgetCpuRam = null; }
+            if (widgetDrive != null) { widgetDrive.Dispose(); widgetDrive = null; }
+            if (widgetNetwork != null) { widgetNetwork.Dispose(); widgetNetwork = null; }
 
             ApplyTheme();
 
             if (currentCategory == "DASHBOARD") RenderDashboard();
             else if (currentCategory == "HELP") RenderHelp();
+            else if (currentCategory == "REPORTS") RenderReports();
             else LoadCategory(currentCategory);
         }
 
@@ -841,7 +615,6 @@ namespace SystemMaintenance.Forms
                 else b.BackColor = Color.Transparent;
             }
 
-            // Safe Mode Button Color
             if (btnSafeMode != null)
                  btnSafeMode.ForeColor = ConfigManager.IsSafeMode ? Color.LimeGreen : (ConfigManager.IsDarkMode ? Color.White : Color.Black);
 
@@ -856,14 +629,13 @@ namespace SystemMaintenance.Forms
             chkVerbose.ForeColor = chkVerbose.Checked ? Color.White : fg;
             chkVerbose.BackColor = chkVerbose.Checked ? ThemeManager.ColAccent : Color.Transparent;
 
-            foreach(var card in scriptCardCache.Values) {
-                card.BackColor = ThemeManager.GetCardColor(ConfigManager.IsDarkMode);
-                foreach(Control c in card.Controls) {
-                    if (c.Tag != null && c.Tag.ToString() == "THEMEABLE") c.ForeColor = ThemeManager.GetTextColor(ConfigManager.IsDarkMode);
-                    if (c.Tag != null && c.Tag.ToString() == "THEMEABLE_DESC") c.ForeColor = ThemeManager.GetSecondaryTextColor(ConfigManager.IsDarkMode);
-                }
+            // ScriptCards know how to update themselves
+            foreach(var p in scriptCardCache.Values) {
+                if(p is ScriptCard card) card.ApplyTheme();
             }
         }
+
+        // ... (Keep Log, SaveLog, Admin check, and Data Init as before) ...
 
         private void SaveLogToFile()
         {

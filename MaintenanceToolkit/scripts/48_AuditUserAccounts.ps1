@@ -2,9 +2,9 @@
 Assert-Admin
 Write-Header "Audit User Accounts"
 Get-SystemSummary
-Write-Section "Local Accounts"
 
 try {
+    Write-Section "Scanning Local Accounts"
     $users = Get-WmiObject Win32_UserAccount -Filter "LocalAccount=True"
     $userReport = @()
 
@@ -14,17 +14,29 @@ try {
 
         $pwdReq = "Yes"
         if ($u.PasswordRequired -eq $false) {
-             $pwdReq = "<span class='status-fail'>NO (!)</span>"
+             $pwdReq = "<span class='status-fail'>NO (!)</span"
         }
+
+        # Try to get Last Logon (Tricky for local accounts, usually needs NetAPI32 or parsing 'net user')
+        # We'll use 'net user' output parsing as a robust fallback
+        $lastLogon = "Unknown"
+        try {
+            $netUser = net user $u.Name 2>$null
+            $line = $netUser | Select-String "Last logon"
+            if ($line) { $lastLogon = $line.ToString().Split(@("logon"), [StringSplitOptions]::RemoveEmptyEntries)[1].Trim() }
+        } catch {}
 
         $userReport += [PSCustomObject]@{
             Username = $u.Name
             FullName = $u.FullName
             Status = $status
             Lockout = $lock
-            "Password Required" = $pwdReq
+            "Password Req" = $pwdReq
+            "Last Logon" = $lastLogon
             SID = $u.SID
         }
+
+        Write-Log "User: $($u.Name) [$($u.Disabled ? 'Disabled' : 'Active')]" "White"
     }
 
     $report = New-Report "Local User Account Audit"
@@ -33,7 +45,7 @@ try {
     $outFile = "$env:USERPROFILE\Desktop\UserAudit_$(Get-Date -Format 'yyyyMMdd_HHmm').html"
     $report | Export-Report-Html $outFile
 
-    Show-Success "Audit Complete. Report saved to $outFile"
+    Show-Success "Audit Complete. Report saved."
     Invoke-Item $outFile
 
 } catch {

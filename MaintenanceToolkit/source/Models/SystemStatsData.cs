@@ -13,6 +13,8 @@ namespace SystemMaintenance.Models
          public long RamTotal { get; set; }
          public long RamFree { get; set; }
          public bool RebootPending { get; set; }
+         public long NetSent { get; set; } // Bytes/sec
+         public long NetRecv { get; set; } // Bytes/sec
          public List<DriveInfoData> Drives { get; set; }
 
          public SystemStatsData() { Drives = new List<DriveInfoData>(); }

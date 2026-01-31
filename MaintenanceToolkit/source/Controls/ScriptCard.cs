@@ -18,6 +18,7 @@ namespace SystemMaintenance.Controls
 
         public event EventHandler<ScriptInfo> OnRunClick;
         public event EventHandler<ScriptInfo> OnFavoriteClick;
+        public event EventHandler<ScriptInfo> OnScheduleClick;
 
         public ScriptCard(ScriptInfo script)
         {
@@ -66,6 +67,19 @@ namespace SystemMaintenance.Controls
                 OnRunClick?.Invoke(this, Script);
             };
 
+            // Schedule Button (Small Clock Icon or Text)
+            // Only non-interactive scripts usually make sense to schedule
+            Button btnSchedule = new Button {
+                Text = "🕒",
+                Size = new Size(30, 30),
+                Location = new Point(140, 110),
+                FlatStyle = FlatStyle.Flat,
+                Cursor = Cursors.Hand,
+                Visible = !Script.IsInteractive
+            };
+            btnSchedule.FlatAppearance.BorderSize = 0;
+            btnSchedule.Click += (s, e) => OnScheduleClick?.Invoke(this, Script);
+
             // Batch Checkbox
             chkBatch = new CheckBox {
                 Text = "Select",
@@ -92,6 +106,7 @@ namespace SystemMaintenance.Controls
             this.Controls.Add(lblTitle);
             this.Controls.Add(lblDesc);
             this.Controls.Add(btnRun);
+            this.Controls.Add(btnSchedule);
             this.Controls.Add(chkBatch);
             this.Controls.Add(lblFav);
 
