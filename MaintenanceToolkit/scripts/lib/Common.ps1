@@ -292,6 +292,9 @@ function Export-Report-Html {
         [string]$Path
     )
 
+    $hasInternet = Test-IsConnected
+    $chartScript = if ($hasInternet) { '<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>' } else { '<!-- Offline Mode: Charts Disabled -->' }
+
     $css = @"
 <style>
 :root {
@@ -334,7 +337,7 @@ li { margin-bottom: 5px; }
 .bar-fill { height: 100%; background-color: var(--accent); text-align: center; color: white; font-size: 11px; line-height: 20px; white-space: nowrap; }
 .chart-box { width: 100%; max-width: 600px; height: 300px; margin: 20px auto; }
 </style>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+$chartScript
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const getCellValue = (tr, idx) => tr.children[idx].innerText || tr.children[idx].textContent;
@@ -372,47 +375,51 @@ $css
 
         # Chart Render (Simple Bar)
         if ($sec.ChartData) {
-            $cData = $sec.Content # Expecting array of objects
-            $labels = @()
-            $values = @()
+            if ($hasInternet) {
+                $cData = $sec.Content # Expecting array of objects
+                $labels = @()
+                $values = @()
 
-            # Simple reflection for properties
-            # ChartData should be hash: @{ Label="PropName"; Value="PropName" }
-            $lProp = $sec.ChartData.Label
-            $vProp = $sec.ChartData.Value
+                # Simple reflection for properties
+                # ChartData should be hash: @{ Label="PropName"; Value="PropName" }
+                $lProp = $sec.ChartData.Label
+                $vProp = $sec.ChartData.Value
 
-            foreach($obj in $cData) {
-                $labels += "'$($obj.$lProp)'"
-                # Strip units if string (e.g. "10 GB" -> 10)
-                $val = $obj.$vProp
-                if ($val -is [string]) { $val = $val -replace '[^0-9.]','' }
-                $values += $val
-            }
+                foreach($obj in $cData) {
+                    $labels += "'$($obj.$lProp)'"
+                    # Strip units if string (e.g. "10 GB" -> 10)
+                    $val = $obj.$vProp
+                    if ($val -is [string]) { $val = $val -replace '[^0-9.]','' }
+                    $values += $val
+                }
 
-            $lStr = $labels -join ","
-            $vStr = $values -join ","
-            $cid = "chart_$chartId"
-            $chartId++
+                $lStr = $labels -join ","
+                $vStr = $values -join ","
+                $cid = "chart_$chartId"
+                $chartId++
 
-            $html += @"
-            <div class="chart-box"><canvas id="$cid"></canvas></div>
-            <script>
-            new Chart(document.getElementById('$cid'), {
-                type: 'bar',
-                data: {
-                    labels: [$lStr],
-                    datasets: [{
-                        label: 'Data',
-                        data: [$vStr],
-                        backgroundColor: 'rgba(0, 122, 204, 0.6)',
-                        borderColor: 'rgba(0, 122, 204, 1)',
-                        borderWidth: 1
-                    }]
-                },
-                options: { responsive: true, maintainAspectRatio: false }
-            });
-            </script>
+                $html += @"
+                <div class="chart-box"><canvas id="$cid"></canvas></div>
+                <script>
+                new Chart(document.getElementById('$cid'), {
+                    type: 'bar',
+                    data: {
+                        labels: [$lStr],
+                        datasets: [{
+                            label: 'Data',
+                            data: [$vStr],
+                            backgroundColor: 'rgba(0, 122, 204, 0.6)',
+                            borderColor: 'rgba(0, 122, 204, 1)',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: { responsive: true, maintainAspectRatio: false }
+                });
+                </script>
 "@
+            } else {
+                 $html += "<p><em>Chart unavailable in offline mode.</em></p>"
+            }
         }
 
         switch ($sec.Type) {
