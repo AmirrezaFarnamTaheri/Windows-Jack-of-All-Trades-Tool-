@@ -18,13 +18,23 @@ $results = @()
 foreach ($name in $targets.Keys) {
     try {
         $ip = $targets[$name]
-        Write-Host "Pinging $name ($ip)... " -NoNewline -ForegroundColor Gray
+        Write-Host "Testing $name ($ip)... " -NoNewline -ForegroundColor Gray
+
+        # Pre-check connectivity
+        if (-not (Test-Connection $ip -Count 1 -Quiet -TimeoutSeconds 1 -ErrorAction SilentlyContinue)) {
+             Write-Host "Unreachable (Ping Failed)" -ForegroundColor Red
+             $results += [PSCustomObject]@{ Provider=$name; IP=$ip; "Avg Response (ms)"="UNREACHABLE" }
+             continue
+        }
 
         $totalTime = 0
         $count = 5
         $success = 0
 
         for ($i=1; $i -le $count; $i++) {
+            # We measure the time it takes for the OS to resolve a name using this server.
+            # We use a random subdomain to prevent caching if possible, or just repeat 'google.com'
+            # Note: Resolve-DnsName output object doesn't include round-trip time in all cases, so Measure-Command is used.
             $time = Measure-Command {
                 Resolve-DnsName -Name "google.com" -Server $ip -Type A -ErrorAction SilentlyContinue
             }
@@ -59,7 +69,7 @@ if ($results.Count -gt 0) {
 
     $best = $sorted | Where-Object { $_."Avg Response (ms)" -match '^\d' } | Select-Object -First 1
     if ($best) {
-        $report | Add-ReportSection "Recommendation" "Based on this test, the fastest provider for you is <strong>$($best.Provider)</strong>." "RawHtml"
+        $report | Add-ReportSection "Recommendation" "Based on this test, the fastest provider for you is <strong>$($best.Provider)</strong> ($($best.'Avg Response (ms)') ms)." "RawHtml"
     }
 
     $outFile = "$env:USERPROFILE\Desktop\DNSBenchmark_$(Get-Date -Format 'yyyyMMdd_HHmm').html"

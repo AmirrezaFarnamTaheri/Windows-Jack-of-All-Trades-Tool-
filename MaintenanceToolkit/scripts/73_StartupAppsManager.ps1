@@ -7,20 +7,38 @@ Write-Section "Scanning Startup Items"
 try {
     $startupItems = @()
 
-    # Helper to check file existence
-    function Get-FileStatus ($path) {
-        if ([string]::IsNullOrWhiteSpace($path)) { return "Empty" }
+    # Robust Path Resolver
+    function Resolve-Executable ($cmd) {
+        if ([string]::IsNullOrWhiteSpace($cmd)) { return $null }
+        $cmd = $cmd.Trim()
 
-        $executablePath = $null
-        # Regex to find a path to an .exe, handling quotes and spaces
-        if ($path -match '(?i)(".*?\.(?:exe|bat|cmd|vbs)"|[\w\:\\\/ -]+\.(?:exe|bat|cmd|vbs))') {
-            $executablePath = $matches[0].Trim('"')
-        } else {
-            # Fallback for paths without extensions (e.g., shortcuts)
-            $executablePath = $path.Trim('"')
+        # 1. Quoted Path
+        if ($cmd.StartsWith('"')) {
+            $end = $cmd.IndexOf('"', 1)
+            if ($end -gt 1) {
+                $p = $cmd.Substring(1, $end - 1)
+                if (Test-Path $p) { return $p }
+            }
         }
 
-        if (Test-Path $executablePath -ErrorAction SilentlyContinue) { return "<span class='status-pass'>Found</span>" }
+        # 2. Iterative Check (Space Handling)
+        $parts = $cmd -split ' '
+        $current = ""
+        foreach ($part in $parts) {
+            $current = if ($current) { "$current $part" } else { $part }
+            if (Test-Path $current -PathType Leaf) { return $current }
+            if (Test-Path "$current.exe" -PathType Leaf) { return "$current.exe" }
+        }
+
+        # 3. Fallback: First Token
+        return $parts[0]
+    }
+
+    function Get-FileStatus ($path) {
+        $realPath = Resolve-Executable $path
+        if ($realPath -and (Test-Path $realPath)) {
+            return "<span class='status-pass'>Found</span>"
+        }
         return "<span class='status-fail'>MISSING</span>"
     }
 
@@ -60,7 +78,7 @@ try {
 
     if ($startupItems.Count -gt 0) {
         $report = New-Report "Startup Applications Report"
-        $report | Add-ReportSection "Startup Items" $startupItems "Table"
+        $report | Add-ReportSection "Startup Items ($($startupItems.Count))" $startupItems "Table"
 
         $outFile = "$env:USERPROFILE\Desktop\StartupApps_$(Get-Date -Format 'yyyyMMdd_HHmm').html"
         $report | Export-Report-Html $outFile

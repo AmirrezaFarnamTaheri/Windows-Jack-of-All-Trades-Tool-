@@ -1,10 +1,20 @@
 # Common.ps1 - Shared functions for Maintenance Toolkit
 
 function Assert-Admin {
-    if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]"Administrator")) {
+    $currentPrincipal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
+    if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]"Administrator")) {
         Write-Host "Error: This script requires Administrator privileges." -ForegroundColor Red
         if (-not [Console]::IsInputRedirected) { Pause }
         Exit 1
+    }
+}
+
+function Assert-Destructive {
+    param($Message = "This action is potentially destructive.")
+    # Safe Mode check (controlled by environment variable set by GUI)
+    if ($env:MAINTENANCE_SAFE_MODE -eq '1') {
+        Show-Error "Action blocked by Safe Mode: $Message"
+        throw "SafeModeBlock"
     }
 }
 
@@ -82,11 +92,13 @@ function Pause-If-Interactive {
 }
 
 function Test-IsConnected {
-    try {
-        $TargetHost = "8.8.8.8"
-        $ping = Test-Connection -ComputerName $TargetHost -Count 1 -Quiet -ErrorAction SilentlyContinue
-        if ($ping) { return $true }
-    } catch {}
+    $targets = @("8.8.8.8", "1.1.1.1", "www.microsoft.com")
+    foreach ($target in $targets) {
+        try {
+            $ping = Test-Connection -ComputerName $target -Count 1 -Quiet -ErrorAction SilentlyContinue
+            if ($ping) { return $true }
+        } catch {}
+    }
 
     # Fallback to HTTP request
     try {
@@ -109,7 +121,6 @@ function Assert-SystemRestoreEnabled {
         # Check if System Restore is enabled for C:
         $rpoint = Get-ComputerRestorePoint -ErrorAction SilentlyContinue
         # This only lists points. We need to enable it.
-        # Check registry or just try enabling it.
         Enable-ComputerRestore -Drive "C:\" -ErrorAction SilentlyContinue
         return $true
     } catch {
@@ -249,27 +260,61 @@ function Export-Report-Html {
 
     $css = @"
 <style>
-body { font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; background-color: #1e1e1e; color: #f1f1f1; margin: 0; padding: 40px; }
-h1 { color: #007acc; font-weight: 300; font-size: 2.5em; margin-bottom: 5px; }
+:root {
+    --bg-color: #1e1e1e;
+    --text-color: #f1f1f1;
+    --section-bg: #252526;
+    --accent: #007acc;
+    --border: #3e3e42;
+    --hover: #2d2d30;
+}
+@media (prefers-color-scheme: light) {
+    :root {
+        --bg-color: #f0f0f0;
+        --text-color: #202020;
+        --section-bg: #ffffff;
+        --accent: #0078d4;
+        --border: #cccccc;
+        --hover: #f5f5f5;
+    }
+}
+body { font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; background-color: var(--bg-color); color: var(--text-color); margin: 0; padding: 40px; }
+h1 { color: var(--accent); font-weight: 300; font-size: 2.5em; margin-bottom: 5px; }
 .meta { color: #888; font-size: 0.9em; margin-bottom: 40px; border-bottom: 1px solid #333; padding-bottom: 10px; }
-.section { background: #252526; padding: 25px; margin-bottom: 25px; border-radius: 4px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
-h2 { color: #4ec9b0; margin-top: 0; border-bottom: 1px solid #3e3e42; padding-bottom: 15px; font-weight: 400; font-size: 1.5em; }
-p { line-height: 1.6; color: #ccc; }
+.section { background: var(--section-bg); padding: 25px; margin-bottom: 25px; border-radius: 4px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+h2 { color: #4ec9b0; margin-top: 0; border-bottom: 1px solid var(--border); padding-bottom: 15px; font-weight: 400; font-size: 1.5em; }
+p { line-height: 1.6; color: inherit; }
 table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 0.95em; }
-th { text-align: left; background: #333; padding: 12px; border-bottom: 2px solid #007acc; color: #fff; font-weight: 600; }
-td { padding: 12px; border-bottom: 1px solid #3e3e42; color: #ddd; }
-tr:hover { background: #2d2d30; }
-.key-value { display: flex; margin-bottom: 8px; border-bottom: 1px solid #333; padding-bottom: 4px; }
-.key { width: 250px; color: #aaa; font-weight: 600; }
-.val { flex: 1; color: #fff; }
-ul { color: #ccc; line-height: 1.6; }
+th { text-align: left; background: #333; padding: 12px; border-bottom: 2px solid var(--accent); color: #fff; font-weight: 600; cursor: pointer; }
+td { padding: 12px; border-bottom: 1px solid var(--border); color: inherit; }
+tr:hover { background: var(--hover); }
+.key-value { display: flex; margin-bottom: 8px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+.key { width: 250px; color: #888; font-weight: 600; }
+.val { flex: 1; color: inherit; }
+ul { line-height: 1.6; }
 li { margin-bottom: 5px; }
 .status-pass { color: #4caf50; font-weight: bold; }
 .status-fail { color: #f44336; font-weight: bold; }
 .status-warn { color: #ffeb3b; font-weight: bold; }
 .bar-container { background-color: #444; width: 100%; height: 20px; border-radius: 4px; overflow: hidden; position: relative; }
-.bar-fill { height: 100%; background-color: #007acc; text-align: center; color: white; font-size: 11px; line-height: 20px; white-space: nowrap; }
+.bar-fill { height: 100%; background-color: var(--accent); text-align: center; color: white; font-size: 11px; line-height: 20px; white-space: nowrap; }
 </style>
+<script>
+// Simple Table Sorter
+document.addEventListener('DOMContentLoaded', function() {
+    const getCellValue = (tr, idx) => tr.children[idx].innerText || tr.children[idx].textContent;
+    const comparer = (idx, asc) => (a, b) => ((v1, v2) =>
+        v1 !== '' && v2 !== '' && !isNaN(v1) && !isNaN(v2) ? v1 - v2 : v1.toString().localeCompare(v2)
+    )(getCellValue(asc ? a : b, idx), getCellValue(asc ? b : a, idx));
+
+    document.querySelectorAll('th').forEach(th => th.addEventListener('click', (() => {
+        const table = th.closest('table');
+        Array.from(table.querySelectorAll('tr:nth-child(n+2)'))
+            .sort(comparer(Array.from(th.parentNode.children).indexOf(th), this.asc = !this.asc))
+            .forEach(tr => table.appendChild(tr) );
+    })));
+});
+</script>
 "@
 
     $html = @"
@@ -277,6 +322,7 @@ li { margin-bottom: 5px; }
 <html>
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>$($Report.Title)</title>
 $css
 </head>
