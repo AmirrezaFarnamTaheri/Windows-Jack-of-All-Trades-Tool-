@@ -303,7 +303,7 @@ namespace SystemMaintenance.Forms
             {
                 foreach(Control c in scriptsPanel.Controls)
                 {
-                    // Adjust widgets to full width
+                    // Adjust widgets and full width panels
                     if (c is DashboardWidget || c == dashboardPanel || c == helpPanel || c == reportPanel)
                     {
                         c.Width = scriptsPanel.Width - 40;
@@ -386,12 +386,21 @@ namespace SystemMaintenance.Forms
                 else
                 {
                     List<ScriptInfo> scripts = new List<ScriptInfo>();
-                    if (categories.ContainsKey(category)) scripts = categories[category];
+                    if (category == "FAVORITES") {
+                         foreach (var list in categories.Values) scripts.AddRange(list);
+                         scripts = scripts.Where(s => ConfigManager.Favorites.Contains(s.FileName)).ToList();
+                    }
+                    else if (categories.ContainsKey(category)) {
+                        scripts = categories[category];
+                    }
 
                     foreach(var s in scripts) {
                         scriptsPanel.Controls.Add(GetOrAddCard(s));
                     }
                 }
+
+                // Re-apply filter if search text exists
+                if (!string.IsNullOrEmpty(txtSearch.Text)) TxtSearch_TextChanged(this, EventArgs.Empty);
             }
             finally {
                 scriptsPanel.AutoSize = wasAutoSize;
@@ -408,9 +417,6 @@ namespace SystemMaintenance.Forms
             if (widgetDrive == null) widgetDrive = new DriveWidget();
             if (widgetNetwork == null) widgetNetwork = new NetworkWidget();
 
-            // Refresh Button logic (re-implemented simply here or within widgets?
-            // Better: Add a "Refresh" button to the panel, same as before, but calling widget updates)
-
             if (dashboardPanel == null) {
                 dashboardPanel = new Panel { Width = Math.Max(100, scriptsPanel.Width - 40), AutoSize = true, Padding = new Padding(0,0,0,20) };
 
@@ -421,7 +427,6 @@ namespace SystemMaintenance.Forms
                 btnRefresh.Anchor = AnchorStyles.Top | AnchorStyles.Right;
                 dashboardPanel.Controls.Add(btnRefresh);
 
-                // Add Widgets to a Flow (inside the panel)
                 FlowLayoutPanel widgetFlow = new FlowLayoutPanel {
                     Location = new Point(0, 50),
                     AutoSize = true,
@@ -432,19 +437,12 @@ namespace SystemMaintenance.Forms
 
                 widgetFlow.Controls.Add(widgetHeader);
                 widgetFlow.Controls.Add(widgetCpuRam);
-                widgetFlow.Controls.Add(widgetNetwork); // New!
+                widgetFlow.Controls.Add(widgetNetwork);
                 widgetFlow.Controls.Add(widgetDrive);
 
                 dashboardPanel.Controls.Add(widgetFlow);
 
-                // Quick Actions
                 Label lblQuick = new Label { Text = "Quick Maintenance", Font = new Font("Segoe UI", 14F, FontStyle.Regular), AutoSize = true, Location = new Point(0, 200), ForeColor = ThemeManager.GetTextColor(ConfigManager.IsDarkMode), Tag = "THEMEABLE" };
-                // Location dynamic based on flow height?
-                // We'll use Flow for the whole dashboard actually?
-                // Mixed: Panel for absolute header, Flow for content.
-
-                // Let's just append Quick Actions to the same flow or logic
-                // Simpler: Just put Quick Actions below the widgetFlow
 
                 FlowLayoutPanel quickFlow = new FlowLayoutPanel { Width = dashboardPanel.Width, Height = 180, AutoScroll = false, Tag = "QUICK_FLOW" };
                 string[] quickScripts = { "70_DetailedSysInfo.ps1", "2_InstallCleaningTools.ps1", "1_CreateRestorePoint.ps1", "9_DiskHealthCheck.ps1" };
@@ -460,13 +458,11 @@ namespace SystemMaintenance.Forms
                 dashboardPanel.Controls.Add(lblQuick);
                 dashboardPanel.Controls.Add(quickFlow);
 
-                // Logic to position Quick Actions below widgets
                 widgetFlow.SizeChanged += (s,e) => {
                     lblQuick.Location = new Point(0, widgetFlow.Bottom + 20);
                     quickFlow.Location = new Point(0, lblQuick.Bottom + 10);
                 };
 
-                // Update Logic
                 Action<SystemStatsData> updateUI = (data) => {
                     widgetHeader.UpdateData(data);
                     widgetCpuRam.UpdateData(data);
@@ -484,7 +480,6 @@ namespace SystemMaintenance.Forms
                      finally { if (!IsDisposed) btnRefresh.Enabled = true; }
                 };
 
-                // Initial Load
                 Task.Run(async () => {
                     try {
                         SystemStatsData stats = await SystemStatsService.Instance.GetStatsAsync();
@@ -497,7 +492,6 @@ namespace SystemMaintenance.Forms
                 dashboardPanel.Width = scriptsPanel.Width - 40;
                 foreach(Control c in dashboardPanel.Controls) {
                     if (c is FlowLayoutPanel) c.Width = dashboardPanel.Width;
-                    // Widgets inside flow will auto-width via their own logic/docking
                 }
             }
 
@@ -525,7 +519,6 @@ namespace SystemMaintenance.Forms
 
                 if (content == null) content = "# Error\nHelp file not found.";
 
-                // Markdown parsing (Basic)
                 string html = "<html><body style='font-family:Segoe UI; padding:20px; color:" + (ConfigManager.IsDarkMode ? "#EEE" : "#222") + "; background-color:" + (ConfigManager.IsDarkMode ? "#222" : "#FFF") + "'>";
                 bool inList = false;
 
@@ -569,6 +562,106 @@ namespace SystemMaintenance.Forms
             scriptsPanel.Controls.Add(helpPanel);
         }
 
+        private void RenderReports()
+        {
+            if (reportPanel == null) {
+                reportPanel = new ReportViewerControl();
+            }
+            reportPanel.RefreshReports();
+            if (scriptsPanel.Width > 40) reportPanel.Width = scriptsPanel.Width - 40;
+            scriptsPanel.Controls.Add(reportPanel);
+        }
+
+        private void RunScript(ScriptInfo script)
+        {
+            if (scriptExecutor.IsScriptRunning) {
+                MessageBox.Show("A script is already running.");
+                return;
+            }
+
+            statusLabel.Text = "Running " + script.DisplayName + "...";
+            progressBar.Visible = true;
+            btnCancel.Visible = true;
+            txtLog.Clear();
+
+            Task.Run(async () => {
+                try {
+                    await scriptExecutor.RunScriptAsync(script, chkVerbose.Checked, CancellationToken.None);
+                    if (!IsDisposed) Invoke((Action)(() => {
+                        statusLabel.Text = "Ready";
+                        progressBar.Visible = false;
+                        btnCancel.Visible = false;
+                        Log("Execution Finished.", "SUCCESS");
+                    }));
+                } catch (Exception ex) {
+                    if (!IsDisposed) Invoke((Action)(() => {
+                        statusLabel.Text = "Error";
+                        progressBar.Visible = false;
+                        btnCancel.Visible = false;
+                        Log("Error: " + ex.Message, "ERROR");
+                    }));
+                }
+            });
+        }
+
+        private void BtnRunBatch_Click(object sender, EventArgs e)
+        {
+            var selectedCards = scriptCardCache.Values.OfType<ScriptCard>().Where(c => c.IsSelectedForBatch).ToList();
+            if (selectedCards.Count == 0) {
+                MessageBox.Show("No scripts selected for batch execution.");
+                return;
+            }
+
+            // Check for interactive scripts in batch
+            if (selectedCards.Any(c => c.Script.IsInteractive)) {
+                if (MessageBox.Show("You have selected interactive scripts. These require user input and cannot be fully automated. Continue?", "Interactive Scripts", MessageBoxButtons.YesNo) == DialogResult.No)
+                    return;
+            }
+
+            if (MessageBox.Show($"Are you sure you want to run {selectedCards.Count} scripts?", "Confirm Batch", MessageBoxButtons.YesNo) == DialogResult.No) return;
+
+            batchCts = new CancellationTokenSource();
+            btnRunBatch.Enabled = false;
+            btnCancel.Visible = true;
+            statusLabel.Text = "Batch Mode Running...";
+            progressBar.Visible = true;
+
+            Task.Run(async () => {
+                foreach (var card in selectedCards) {
+                     if (batchCts.Token.IsCancellationRequested) break;
+
+                     if (!IsDisposed) Invoke((Action)(() => {
+                        statusLabel.Text = "Batch: Running " + card.Script.DisplayName + "...";
+                        Log("Batch Starting: " + card.Script.DisplayName, "INFO");
+                        // Scroll to this card? No need.
+                     }));
+
+                     try {
+                         await scriptExecutor.RunScriptAsync(card.Script, chkVerbose.Checked, batchCts.Token);
+                     } catch (Exception ex) {
+                         Log("Batch Error in " + card.Script.DisplayName + ": " + ex.Message, "ERROR");
+                     }
+
+                     await Task.Delay(500); // Breathe
+                }
+
+                if (!IsDisposed) Invoke((Action)(() => {
+                    statusLabel.Text = "Batch Complete";
+                    progressBar.Visible = false;
+                    btnRunBatch.Enabled = true;
+                    btnCancel.Visible = false;
+                    Log("Batch Execution Finished.", "SUCCESS");
+                }));
+            });
+        }
+
+        private void BtnCancel_Click(object sender, EventArgs e)
+        {
+             if (isBatchMode && batchCts != null) batchCts.Cancel();
+             scriptExecutor.Cancel();
+             Log("Cancellation Requested...", "WARN");
+        }
+
         private void ToggleSafeMode(Button btn) {
             ConfigManager.IsSafeMode = !ConfigManager.IsSafeMode;
             ConfigManager.Save();
@@ -591,7 +684,6 @@ namespace SystemMaintenance.Forms
             if (helpPanel != null) { helpPanel.Dispose(); helpPanel = null; }
             if (reportPanel != null) { reportPanel.Dispose(); reportPanel = null; }
 
-            // Dispose widgets too to force re-theme
             if (widgetHeader != null) { widgetHeader.Dispose(); widgetHeader = null; }
             if (widgetCpuRam != null) { widgetCpuRam.Dispose(); widgetCpuRam = null; }
             if (widgetDrive != null) { widgetDrive.Dispose(); widgetDrive = null; }
@@ -629,13 +721,74 @@ namespace SystemMaintenance.Forms
             chkVerbose.ForeColor = chkVerbose.Checked ? Color.White : fg;
             chkVerbose.BackColor = chkVerbose.Checked ? ThemeManager.ColAccent : Color.Transparent;
 
-            // ScriptCards know how to update themselves
             foreach(var p in scriptCardCache.Values) {
                 if(p is ScriptCard card) card.ApplyTheme();
             }
+            if (reportPanel != null) reportPanel.ApplyTheme();
         }
 
-        // ... (Keep Log, SaveLog, Admin check, and Data Init as before) ...
+        private void Log(string message, string type = "INFO")
+        {
+            if (this.IsDisposed || txtLog.IsDisposed) return;
+            if (this.InvokeRequired) {
+                this.Invoke((Action)(() => Log(message, type)));
+                return;
+            }
+
+            string timestamp = DateTime.Now.ToString("HH:mm:ss");
+            string line = string.Format("[{0}] {1}: {2}\r\n", timestamp, type, message);
+
+            // Limit log size
+            if (txtLog.TextLength > 50000) {
+                txtLog.Text = txtLog.Text.Substring(txtLog.TextLength - 40000);
+            }
+
+            txtLog.AppendText(line);
+            // txtLog.ScrollToCaret(); // Performance hit?
+        }
+
+        private void ChkBatchMode_CheckedChanged(object sender, EventArgs e)
+        {
+            isBatchMode = chkBatchMode.Checked;
+            btnRunBatch.Visible = isBatchMode;
+            btnSelectAll.Visible = isBatchMode;
+            btnSelectNone.Visible = isBatchMode;
+
+            chkBatchMode.BackColor = isBatchMode ? ThemeManager.ColAccent : Color.Transparent;
+            chkBatchMode.ForeColor = isBatchMode ? Color.White : ThemeManager.GetTextColor(ConfigManager.IsDarkMode);
+
+            foreach(var p in scriptCardCache.Values) {
+                if(p is ScriptCard card) card.SetBatchMode(isBatchMode);
+            }
+        }
+
+        private void SetAllBatchSelection(bool select)
+        {
+             foreach(Control c in scriptsPanel.Controls) {
+                 if (c is ScriptCard card && c.Visible) card.SetBatchSelection(select);
+             }
+        }
+
+        private void TxtSearch_TextChanged(object sender, EventArgs e)
+        {
+            string term = txtSearch.Text.Trim().ToLower();
+
+            scriptsPanel.SuspendLayout();
+            foreach(Control c in scriptsPanel.Controls) {
+                if (c is ScriptCard card) {
+                    bool match = string.IsNullOrEmpty(term) ||
+                                 card.Script.DisplayName.ToLower().Contains(term) ||
+                                 card.Script.Description.ToLower().Contains(term);
+                    c.Visible = match;
+                }
+            }
+            scriptsPanel.ResumeLayout();
+        }
+
+        private void UpdateFavoritesCategory()
+        {
+            if (currentCategory == "FAVORITES") LoadCategory("FAVORITES");
+        }
 
         private void SaveLogToFile()
         {

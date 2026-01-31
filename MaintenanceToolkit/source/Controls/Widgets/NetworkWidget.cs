@@ -16,7 +16,14 @@ namespace SystemMaintenance.Controls.Widgets
         {
             this.Height = 100;
 
-            lblInterface = new Label { Location = new Point(10, 10), AutoSize = true, Text = "Interface: Auto", ForeColor = Color.Gray, Font = new Font("Segoe UI", 8F) };
+            lblInterface = new Label {
+                Location = new Point(10, 10),
+                AutoSize = true,
+                Text = "Interface: Auto",
+                ForeColor = Color.Gray,
+                Font = new Font("Segoe UI", 8F)
+            };
+
             lblUpload = new Label { Location = new Point(10, 35), AutoSize = true, Text = "Upload: ..." };
             lblDownload = new Label { Location = new Point(10, 60), AutoSize = true, Text = "Download: ..." };
 
@@ -27,6 +34,8 @@ namespace SystemMaintenance.Controls.Widgets
 
         public override void UpdateData(SystemStatsData data)
         {
+            if (data == null) return;
+
             lblUpload.Text = string.Format("▲ Upload: {0}/s", FormatSize(data.NetSent));
             lblDownload.Text = string.Format("▼ Download: {0}/s", FormatSize(data.NetRecv));
         }

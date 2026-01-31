@@ -16,20 +16,23 @@ namespace SystemMaintenance.Controls.Widgets
             this.BackColor = ThemeManager.GetCardColor(ConfigManager.IsDarkMode);
             this.Size = new Size(300, 150); // Default, but Dashboard will resize
             this.Margin = new Padding(0, 0, 0, 10);
+            this.Padding = new Padding(1); // Border effect
 
             lblHeader = new Label {
                 Text = title,
                 Font = new Font("Segoe UI", 10F, FontStyle.Bold),
                 ForeColor = ThemeManager.GetTextColor(ConfigManager.IsDarkMode),
                 Dock = DockStyle.Top,
-                Height = 25,
+                Height = 30,
                 TextAlign = ContentAlignment.MiddleLeft,
-                Padding = new Padding(10, 0, 0, 0)
+                Padding = new Padding(10, 0, 0, 0),
+                BackColor = Color.Transparent
             };
 
             pnlContent = new Panel {
                 Dock = DockStyle.Fill,
-                Padding = new Padding(10)
+                Padding = new Padding(10),
+                BackColor = Color.Transparent
             };
 
             this.Controls.Add(pnlContent);
@@ -47,8 +50,10 @@ namespace SystemMaintenance.Controls.Widgets
 
         protected void UpdateThemeRecursive(Control c)
         {
-            if (c is Label) c.ForeColor = ThemeManager.GetTextColor(ConfigManager.IsDarkMode);
-            // Add other controls as needed
+            c.ForeColor = ThemeManager.GetTextColor(ConfigManager.IsDarkMode);
+            if (c.HasChildren) {
+                foreach (Control child in c.Controls) UpdateThemeRecursive(child);
+            }
         }
     }
 }
