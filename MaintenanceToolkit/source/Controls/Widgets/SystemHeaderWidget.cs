@@ -35,6 +35,7 @@ namespace SystemMaintenance.Controls.Widgets
 
         public override void UpdateData(SystemStatsData data)
         {
+            if (data == null) return;
             lblOS.Text = string.Format("{0} | User: {1}", data.OS, Environment.UserName);
             lblUptime.Text = "Uptime: " + data.Uptime;
             lblReboot.Visible = data.RebootPending;
