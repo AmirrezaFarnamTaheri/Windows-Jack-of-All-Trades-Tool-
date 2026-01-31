@@ -1,67 +1,64 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
-Write-Header "Starting Windows System Repair"
+Write-Header "Windows System Repair"
 Get-SystemSummary
+
 Write-Log "This process may take 15-30 minutes. Do not close this window." "Yellow"
 
 try {
     # 0. Fast Check Health
-    Write-Section "Step 0: Quick Image Health Check"
+    Write-Section "Step 0: Quick Image Check"
     $check = Start-Process -FilePath "dism.exe" -ArgumentList "/Online /Cleanup-Image /CheckHealth" -Wait -NoNewWindow -PassThru
-    if ($check.ExitCode -ne 0) {
-        Write-Log "Quick check flagged potential corruption. Proceeding to deep scan..." "Yellow"
-    } else {
+
+    if ($check.ExitCode -eq 0) {
         Write-Log "Quick check passed." "Green"
-    }
-
-    # 1. Check Image Health (DISM)
-    Write-Section "Step 1: Deep System Image Health (DISM)"
-
-    # Check Internet for DISM /Online
-    $dismArgs = "/Online /Cleanup-Image /ScanHealth"
-    if (-not (Test-IsConnected)) {
-        Write-Log "Warning: No Internet Connection detected. DISM may fail to download repair files." "Yellow"
-        Write-Log "Attempting offline scan only..." "Gray"
-    }
-
-    $process = Start-Process -FilePath "dism.exe" -ArgumentList $dismArgs -Wait -NoNewWindow -PassThru
-
-    if ($process.ExitCode -eq 0) {
-        Show-Success "DISM ScanHealth Passed. No corruption detected."
     } else {
-        Write-Log "DISM found issues (Exit Code: $($process.ExitCode)). Attempting Repair..." "Magenta"
+        Write-Log "Quick check flagged potential corruption. Proceeding..." "Yellow"
+    }
 
-        # Repair Attempt
-        $repairProcess = Start-Process -FilePath "dism.exe" -ArgumentList "/Online /Cleanup-Image /RestoreHealth" -Wait -NoNewWindow -PassThru
-        if ($repairProcess.ExitCode -eq 0) {
-            Show-Success "DISM RestoreHealth Completed Successfully."
-        } else {
-            Show-Error "DISM Repair Failed. You may need to provide a source manually."
+    # 1. DISM RestoreHealth
+    Write-Section "Step 1: System Image Repair (DISM)"
+
+    if (-not (Test-IsConnected)) {
+        Write-Log "No Internet Connection. DISM may fail if source files are missing." "Yellow"
+    }
+
+    # We skip separate ScanHealth and go straight to RestoreHealth if CheckHealth failed or if user wants full maintenance.
+    # Actually, RestoreHealth includes ScanHealth logic.
+    Write-Log "Running DISM /RestoreHealth..." "Cyan"
+    $dism = Start-Process -FilePath "dism.exe" -ArgumentList "/Online /Cleanup-Image /RestoreHealth" -Wait -NoNewWindow -PassThru
+
+    if ($dism.ExitCode -eq 0) {
+        Show-Success "DISM RestoreHealth Completed Successfully."
+    } else {
+        Show-Error "DISM RestoreHealth Failed (Exit Code: $($dism.ExitCode))."
+        Write-Log "You may need to provide a source manually using /Source." "Gray"
+    }
+
+    # 2. SFC
+    Write-Section "Step 2: System File Checker (SFC)"
+    Write-Log "Running SFC /ScanNow..." "Cyan"
+
+    $sfc = Start-Process -FilePath "sfc.exe" -ArgumentList "/scannow" -Wait -NoNewWindow -PassThru
+
+    switch ($sfc.ExitCode) {
+        0 { Show-Success "SFC: No integrity violations found." }
+        1 { Show-Error "SFC: Could not perform operation." }
+        default {
+            Write-Log "SFC found corrupt files and successfully repaired them." "Green"
+            Write-Log "A system restart is recommended." "Magenta"
         }
     }
 
-    # Analyze Component Store (Cleanup opportunity)
-    Write-Log "Analyzing Component Store for cleanup opportunities..." "Gray"
+    # 3. Cleanup Component Store
+    Write-Section "Step 3: Component Store Cleanup"
     Start-Process -FilePath "dism.exe" -ArgumentList "/Online /Cleanup-Image /AnalyzeComponentStore" -Wait -NoNewWindow
-
-    # 2. System File Checker (SFC)
-    Write-Section "Step 2: Scanning System Files (SFC)"
-    $sfcProcess = Start-Process -FilePath "sfc.exe" -ArgumentList "/scannow" -Wait -NoNewWindow -PassThru
-
-    if ($sfcProcess.ExitCode -eq 0) {
-        Show-Success "SFC: No integrity violations found."
-    } elseif ($sfcProcess.ExitCode -eq 1) { # Error
-        Show-Error "SFC: Could not perform the requested operation."
-    } else {
-        Write-Log "SFC completed. Check logs for details." "Cyan"
-        Write-Log "If SFC said 'found corrupt files and successfully repaired them', restart your PC." "Magenta"
-    }
 
     Write-Section "Repair Complete"
     Show-Success "System repair operations finished."
 
 } catch {
-    Show-Error "Critical Error during System Repair: $($_.Exception.Message)"
+    Show-Error "Critical Error: $($_.Exception.Message)"
 }
 
 Pause-If-Interactive

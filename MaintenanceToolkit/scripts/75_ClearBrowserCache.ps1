@@ -2,59 +2,71 @@
 Assert-Admin
 Write-Header "Clear Browser Caches"
 Get-SystemSummary
-Write-Section "Warning"
-Write-Log "This will close all browsers and delete cache files." "Yellow"
-Write-Log "Cookies and History will NOT be deleted." "Cyan"
 
-$confirm = Read-Host "Type 'Y' to continue"
-if ($confirm.Trim() -notmatch '^[Yy]$') { Exit }
+# This is a destructive action (closes apps, deletes files)
+Assert-Destructive "Clearing browser cache requires closing browsers and deleting files."
+
+Write-Section "Preparation"
+Write-Log "This will close all browsers (Chrome, Edge, Firefox)." "Yellow"
+Write-Log "Only CACHE files will be deleted. History/Cookies/Passwords are safe." "White"
+
+if (-not [Console]::IsInputRedirected) {
+    $confirm = Read-Host "Type 'Y' to continue"
+    if ($confirm.Trim() -notmatch '^[Yy]$') {
+        Write-Log "Cancelled by user."
+        Exit
+    }
+}
+
+function Close-And-Clear ($ProcessName, $Name, $CachePaths) {
+    try {
+        if (Get-Process $ProcessName -ErrorAction SilentlyContinue) {
+            Write-Log "Closing $Name..." "Yellow"
+            Stop-Process -Name $ProcessName -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 2
+        }
+
+        $cleared = $false
+        foreach ($path in $CachePaths) {
+            if (Test-Path $path) {
+                Write-Log "Clearing $Name cache at: $path" "Gray"
+                Remove-Item "$path\*" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
+                $cleared = $true
+            }
+        }
+
+        if ($cleared) { Show-Success "$Name Cache Cleared." }
+        else { Write-Log "$Name cache not found or already empty." "DarkGray" }
+
+    } catch {
+        Show-Error "Failed to clear $Name: $($_.Exception.Message)"
+    }
+}
 
 try {
     # 1. Chrome
-    if (Get-Process "chrome" -ErrorAction SilentlyContinue) {
-        Write-Log "Closing Chrome..."
-        Stop-Process -Name "chrome" -Force -ErrorAction SilentlyContinue
-        Start-Sleep -Seconds 1
-    }
-    $chromeCache = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Cache"
-    if (Test-Path $chromeCache) {
-        Remove-Item "$chromeCache\*" -Recurse -Force -ErrorAction SilentlyContinue
-        Show-Success "Chrome Cache Cleared."
-    }
+    Close-And-Clear "chrome" "Google Chrome" @("$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Cache", "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Code Cache")
 
     # 2. Edge
-    if (Get-Process "msedge" -ErrorAction SilentlyContinue) {
-        Write-Log "Closing Edge..."
-        Stop-Process -Name "msedge" -Force -ErrorAction SilentlyContinue
-        Start-Sleep -Seconds 1
-    }
-    $edgeCache = "$env:LOCALAPPDATA\Microsoft\Edge\User Data\Default\Cache"
-    if (Test-Path $edgeCache) {
-        Remove-Item "$edgeCache\*" -Recurse -Force -ErrorAction SilentlyContinue
-        Show-Success "Edge Cache Cleared."
-    }
+    Close-And-Clear "msedge" "Microsoft Edge" @("$env:LOCALAPPDATA\Microsoft\Edge\User Data\Default\Cache", "$env:LOCALAPPDATA\Microsoft\Edge\User Data\Default\Code Cache")
 
     # 3. Firefox
-    if (Get-Process "firefox" -ErrorAction SilentlyContinue) {
-        Write-Log "Closing Firefox..."
-        Stop-Process -Name "firefox" -Force -ErrorAction SilentlyContinue
-        Start-Sleep -Seconds 1
-    }
-    # Firefox profiles vary
-    $ffPath = "$env:LOCALAPPDATA\Mozilla\Firefox\Profiles"
-    if (Test-Path $ffPath) {
-        Get-ChildItem $ffPath -Directory | ForEach-Object {
-            $c = "$($_.FullName)\cache2"
-            if (Test-Path $c) {
-                Remove-Item "$c\*" -Recurse -Force -ErrorAction SilentlyContinue
-                Show-Success "Firefox Cache Cleared ($($_.Name))."
-            }
+    # Firefox profiles are dynamic
+    $ffPaths = @()
+    $ffRoot = "$env:LOCALAPPDATA\Mozilla\Firefox\Profiles"
+    if (Test-Path $ffRoot) {
+        Get-ChildItem $ffRoot -Directory | ForEach-Object {
+            $ffPaths += "$($_.FullName)\cache2"
+            $ffPaths += "$($_.FullName)\startupCache"
         }
     }
+    Close-And-Clear "firefox" "Firefox" $ffPaths
 
-    Show-Success "Browser cleanup finished."
+    # 4. Brave (Optional addition)
+    Close-And-Clear "brave" "Brave" @("$env:LOCALAPPDATA\BraveSoftware\Brave-Browser\User Data\Default\Cache")
 
 } catch {
-    Show-Error "Error: $($_.Exception.Message)"
+    Show-Error "Global Error: $($_.Exception.Message)"
 }
+
 Pause-If-Interactive

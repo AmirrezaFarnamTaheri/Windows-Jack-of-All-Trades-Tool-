@@ -2,57 +2,57 @@
 Assert-Admin
 Write-Header "Windows Update History"
 Get-SystemSummary
-Write-Section "Fetching History"
 
 try {
-    Write-Log "Querying Windows Update History (COM Object)..." "Cyan"
+    Write-Section "Querying Update History"
+    Write-Log "Connecting to Microsoft.Update.Session..." "Cyan"
 
     $session = New-Object -ComObject Microsoft.Update.Session
     $searcher = $session.CreateUpdateSearcher()
-    $historyCount = $searcher.GetTotalHistoryCount()
 
-    if ($historyCount -gt 0) {
-        $report = New-Report "Windows Update History"
+    # Limit to last 100 updates to keep report manageable
+    $limit = 100
+    $total = $searcher.GetTotalHistoryCount()
+    $count = [math]::Min($limit, $total)
 
-        $history = $searcher.QueryHistory(0, $historyCount)
+    Write-Log "Retrieving last $count updates (Total: $total)..." "White"
+
+    if ($count -gt 0) {
+        $history = $searcher.QueryHistory(0, $count)
         $reportData = @()
 
         foreach ($entry in $history) {
             $status = switch ($entry.ResultCode) {
-                2 { "Success" }
-                3 { "Partial" }
-                4 { "Failed" }
-                5 { "Aborted" }
-                default { "Unknown" }
+                2 { "<span class='status-pass'>Success</span>" }
+                3 { "<span class='status-warn'>Partial</span>" }
+                4 { "<span class='status-fail'>Failed</span>" }
+                5 { "<span class='status-warn'>Aborted</span>" }
+                default { "Unknown ($($entry.ResultCode))" }
             }
-
-            # Simple color mapping for HTML status
-            $statusHtml = $status
-            if ($status -eq "Success") { $statusHtml = "<span class='status-pass'>Success</span>" }
-            elseif ($status -eq "Failed") { $statusHtml = "<span class='status-fail'>Failed</span>" }
-            elseif ($status -eq "Aborted") { $statusHtml = "<span class='status-warn'>Aborted</span>" }
 
             $reportData += [PSCustomObject]@{
                 Date = $entry.Date
-                Status = $statusHtml
+                Result = $status
                 Title = $entry.Title
-                "Support URL" = if ($entry.SupportUrl) { "<a href='$($entry.SupportUrl)'>Link</a>" } else { "" }
+                Description = $entry.Description
             }
         }
 
-        $report | Add-ReportSection "Update History ($historyCount items)" $reportData "Table"
+        $report = New-Report "Windows Update History (Last $count)"
+        $report | Add-ReportSection "Recent Updates" $reportData "Table"
 
         $outFile = "$env:USERPROFILE\Desktop\UpdateHistory_$(Get-Date -Format 'yyyyMMdd_HHmm').html"
         $report | Export-Report-Html $outFile
 
-        Show-Success "History exported to $outFile"
+        Show-Success "Report generated on Desktop."
         Invoke-Item $outFile
 
     } else {
-        Show-Info "No update history found."
+        Show-Info "No update history available on this machine."
     }
 
 } catch {
-    Show-Error "Error: $($_.Exception.Message)"
+    Show-Error "Failed to retrieve history: $($_.Exception.Message)"
 }
+
 Pause-If-Interactive

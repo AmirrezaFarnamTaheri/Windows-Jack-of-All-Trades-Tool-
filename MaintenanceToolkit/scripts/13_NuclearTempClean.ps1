@@ -3,6 +3,9 @@ Assert-Admin
 Write-Header "Nuclear Temporary File Cleanup"
 Get-SystemSummary
 
+# Safety Check
+Assert-Destructive "This script aggressively deletes temporary files and empties the Recycle Bin."
+
 Write-Section "Analyzing Disk Usage"
 Write-Log "Calculating reclaimable space..." "Cyan"
 
@@ -53,13 +56,14 @@ foreach ($t in $targets) {
         continue
     }
 
+    # Safety: Ensure we aren't deleting root
     $root = [System.IO.Path]::GetPathRoot($resolved)
     if ($resolved.TrimEnd('\') -eq $root.TrimEnd('\')) {
         Show-Warning "Skipping $($t.Name): refusing to clean drive root ($resolved)."
         continue
     }
 
-    # Special Handling
+    # Special Handling for Windows Update
     $wuWasRunning = $false
     $bitsWasRunning = $false
 
@@ -70,19 +74,21 @@ foreach ($t in $targets) {
         $wuWasRunning = ($wuSvc -and $wuSvc.Status -eq 'Running')
         $bitsWasRunning = ($bitsSvc -and $bitsSvc.Status -eq 'Running')
 
-        Stop-ServiceSafe "wuauserv"
-        Stop-ServiceSafe "bits"
+        try {
+            Stop-ServiceSafe "wuauserv"
+            Stop-ServiceSafe "bits"
+        } catch {
+            Write-Log "Could not stop update services. Some files may be locked." "Yellow"
+        }
     }
 
     try {
         Get-ChildItem -Path $resolved -Recurse -Force -ErrorAction SilentlyContinue | Remove-Item -Force -Recurse -ErrorAction SilentlyContinue
     } finally {
         if ($t.Name -eq "Windows Update") {
-            $wu = Get-CimInstance Win32_Service -Filter "Name='wuauserv'" -ErrorAction SilentlyContinue
-            if ($wuWasRunning -and $wu -and $wu.StartMode -ne "Disabled") { Start-Service "wuauserv" -ErrorAction SilentlyContinue }
-
-            $bits = Get-CimInstance Win32_Service -Filter "Name='bits'" -ErrorAction SilentlyContinue
-            if ($bitsWasRunning -and $bits -and $bits.StartMode -ne "Disabled") { Start-Service "bits" -ErrorAction SilentlyContinue }
+            # Restart only if they were running
+            if ($wuWasRunning) { Start-Service "wuauserv" -ErrorAction SilentlyContinue }
+            if ($bitsWasRunning) { Start-Service "bits" -ErrorAction SilentlyContinue }
         }
     }
 }
@@ -101,7 +107,7 @@ foreach ($t in $targets) {
 }
 
 $reclaimed = $totalInitial - $totalFinal
-if ($reclaimed -lt 0) { $reclaimed = 0 } # Sanity check
+if ($reclaimed -lt 0) { $reclaimed = 0 } # Sanity check (e.g. if new files created)
 
 Show-Success "Space Reclaimed: $(Format-Size $reclaimed)"
 
