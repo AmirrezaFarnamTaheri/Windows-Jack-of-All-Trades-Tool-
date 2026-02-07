@@ -18,7 +18,6 @@ $AppFiles = $SourceFiles | Where-Object { $_ -notmatch "TestRunner.cs" -and $_ -
 
 if ($AppFiles.Count -eq 0) {
     Write-Host "Error: No .cs files found in $SourceDir" -ForegroundColor Red
-    if (-not [Console]::IsInputRedirected) { Pause }
     Exit
 }
 
@@ -29,7 +28,6 @@ $CSC = Get-ChildItem -Path "$env:windir\Microsoft.NET\Framework64\v4*" -Filter "
 
 if (-not $CSC) {
     Write-Host "Error: Could not find C# Compiler (CSC.exe)." -ForegroundColor Red
-    if (-not [Console]::IsInputRedirected) { Pause }
     Exit
 }
 
@@ -128,5 +126,3 @@ if ($Test) {
         Write-Host "Error building tests: $_" -ForegroundColor Red
     }
 }
-
-if (-not [Console]::IsInputRedirected) { Pause }

@@ -386,6 +386,7 @@ $css
                 $vProp = $sec.ChartData.Value
 
                 foreach($obj in $cData) {
+                    if ($obj -eq $null) { continue }
                     $labels += "'$($obj.$lProp)'"
                     # Strip units if string (e.g. "10 GB" -> 10)
                     $val = $obj.$vProp
