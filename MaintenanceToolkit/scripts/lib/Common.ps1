@@ -336,10 +336,12 @@ li { margin-bottom: 5px; }
 .bar-container { background-color: #444; width: 100%; height: 20px; border-radius: 4px; overflow: hidden; position: relative; }
 .bar-fill { height: 100%; background-color: var(--accent); text-align: center; color: white; font-size: 11px; line-height: 20px; white-space: nowrap; }
 .chart-box { width: 100%; max-width: 600px; height: 300px; margin: 20px auto; }
+.search-box { margin-bottom: 10px; padding: 8px; width: 100%; max-width: 300px; background: var(--hover); border: 1px solid var(--border); color: var(--text-color); }
 </style>
 $chartScript
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    // Sort
     const getCellValue = (tr, idx) => tr.children[idx].innerText || tr.children[idx].textContent;
     const comparer = (idx, asc) => (a, b) => ((v1, v2) =>
         v1 !== '' && v2 !== '' && !isNaN(v1) && !isNaN(v2) ? v1 - v2 : v1.toString().localeCompare(v2)
@@ -351,6 +353,20 @@ document.addEventListener('DOMContentLoaded', function() {
             .sort(comparer(Array.from(th.parentNode.children).indexOf(th), this.asc = !this.asc))
             .forEach(tr => table.appendChild(tr) );
     })));
+
+    // Search
+    document.querySelectorAll('.search-box').forEach(input => {
+        input.addEventListener('keyup', function() {
+            const term = this.value.toLowerCase();
+            const table = this.nextElementSibling; // Assumes Table is right after Input
+            if (table && table.tagName === 'TABLE') {
+                Array.from(table.querySelectorAll('tr:nth-child(n+2)')).forEach(row => {
+                    const text = row.textContent.toLowerCase();
+                    row.style.display = text.includes(term) ? '' : 'none';
+                });
+            }
+        });
+    });
 });
 </script>
 "@
@@ -434,6 +450,7 @@ $css
             }
             "Table" {
                 if ($sec.Content) {
+                    $html += '<input type="text" class="search-box" placeholder="Filter table...">'
                     $tableHtml = $sec.Content | ConvertTo-Html -Fragment
                     $tableHtml = $tableHtml `
                         -replace '&lt;(span\s+class=(&quot;|&#39;)status-(?:pass|fail|warn)\2)&gt;', '<$1>' `

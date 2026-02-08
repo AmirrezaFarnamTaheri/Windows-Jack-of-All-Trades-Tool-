@@ -18,12 +18,31 @@ try {
             Write-Log "Found $($files.Count) large files." "Green"
             Write-Section "Results"
 
+            $reportData = @()
             $files | Sort-Object Length -Descending | ForEach-Object {
                 $sizeGB = [math]::Round($_.Length / 1GB, 2)
+
+                # Console Output
                 Write-Host "$sizeGB GB" -NoNewline -ForegroundColor Yellow
                 Write-Host " - $($_.FullName)" -ForegroundColor White
+
+                # Report Data
+                $reportData += [PSCustomObject]@{
+                    "Size (GB)" = $sizeGB
+                    Name = $_.Name
+                    Path = $_.FullName
+                    Created = $_.CreationTime
+                }
             }
-            Show-Success "Scan Complete."
+
+            $report = New-Report "Large Files Report"
+            $report | Add-ReportSection "Files > 1GB in $path" $reportData "Table" @{ Label="Name"; Value="Size (GB)" }
+
+            $outFile = "$env:USERPROFILE\Desktop\LargeFiles_$(Get-Date -Format 'yyyyMMdd_HHmm').html"
+            $report | Export-Report-Html $outFile
+
+            Show-Success "Report generated at $outFile"
+            Invoke-Item $outFile
         } else {
             Show-Success "No files larger than 1GB found."
         }
