@@ -1,4 +1,5 @@
 . "$PSScriptRoot/lib/Common.ps1"
+Assert-Admin
 # Non-Interactive Maintenance Script
 Write-Log "Starting Weekly Maintenance..."
 
