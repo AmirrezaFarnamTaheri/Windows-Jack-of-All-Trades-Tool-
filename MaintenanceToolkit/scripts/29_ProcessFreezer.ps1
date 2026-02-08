@@ -30,7 +30,7 @@ public class ProcessUtil {
 try {
     Add-Type $code -ErrorAction SilentlyContinue
 } catch {
-    # Type might already be added in session
+    # Type might already be added in session if run multiple times
 }
 
 try {
@@ -40,15 +40,15 @@ try {
             $handle = [ProcessUtil]::OpenProcess(0x0800, $false, $p.Id) # 0x0800 = SUSPEND_RESUME
 
             if ($handle -ne [IntPtr]::Zero) {
-                Write-Log "Suspending $($p.ProcessName) (PID: $($p.Id))..."
+                Write-Log "Suspending $($p.ProcessName) (PID: $($p.Id))..." "Yellow"
                 [ProcessUtil]::NtSuspendProcess($handle) | Out-Null
                 [ProcessUtil]::CloseHandle($handle) | Out-Null
                 Show-Success "Suspended $($p.ProcessName) ($($p.Id))"
             } else {
-                Show-Error "Failed to open handle for PID $($p.Id)."
+                Show-Error "Failed to open handle for PID $($p.Id). Access Denied?"
             }
         }
-        Write-Log "`nTo Resume, restart the app or use Resource Monitor." "Yellow"
+        Write-Log "`nTo Resume, restart the app or use Resource Monitor (resmon)." "White"
     } else {
         Show-Error "Process '$name' not found."
     }

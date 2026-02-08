@@ -10,8 +10,15 @@ try {
         $t = Get-Date -Format "HH:mm:ss"
         try {
             $TargetHost = "8.8.8.8"
-            $ping = Test-Connection -ComputerName $TargetHost -Count 1 -ErrorAction Stop
-            Write-Log "[$t] Reply from $($ping.Address): time=$($ping.ResponseTime)ms" "Green"
+            # Use -TimeoutSeconds to prevent long hangs
+            $ping = Test-Connection -ComputerName $TargetHost -Count 1 -TimeoutSeconds 2 -ErrorAction Stop
+
+            $ms = $ping.ResponseTime
+            $color = "Green"
+            if ($ms -gt 100) { $color = "Yellow" }
+            if ($ms -gt 300) { $color = "Red" }
+
+            Write-Log "[$t] Reply from $($ping.Address): time=${ms}ms" $color
         } catch {
             Show-Error "[$t] Request timed out."
         }
