@@ -32,16 +32,19 @@ foreach ($name in $targets.Keys) {
         $success = 0
 
         for ($i=1; $i -le $count; $i++) {
-            # We measure the time it takes for the OS to resolve a name using this server.
-            # We use a random subdomain to prevent caching if possible, or just repeat 'google.com'
-            # Note: Resolve-DnsName output object doesn't include round-trip time in all cases, so Measure-Command is used.
-            $time = Measure-Command {
-                Resolve-DnsName -Name "google.com" -Server $ip -Type A -ErrorAction SilentlyContinue
+            # Use Resolve-DnsName with exact measurement
+            $timer = [System.Diagnostics.Stopwatch]::StartNew()
+            try {
+                $dnsResult = Resolve-DnsName -Name "google.com" -Server $ip -Type A -ErrorAction Stop
+                $timer.Stop()
+                if ($dnsResult) {
+                    $totalTime += $timer.Elapsed.TotalMilliseconds
+                    $success++
+                }
+            } catch {
+                $timer.Stop()
             }
-            if ($time.TotalMilliseconds -gt 0) {
-                $totalTime += $time.TotalMilliseconds
-                $success++
-            }
+            Start-Sleep -Milliseconds 50
         }
 
         if ($success -gt 0) {
@@ -53,23 +56,31 @@ foreach ($name in $targets.Keys) {
             $results += [PSCustomObject]@{ Provider=$name; IP=$ip; "Avg Response (ms)"="TIMEOUT" }
         }
     } catch {
-        Write-Log "Error testing $name" "Red"
+        Write-Log "Error testing $name: $($_.Exception.Message)" "Red"
     }
 }
 
 if ($results.Count -gt 0) {
-    $sorted = $results |
-      Sort-Object @{ Expression = {
-        if ($_."Avg Response (ms)" -match '^\d') { [double]$_."Avg Response (ms)" }
-        else { [double]::MaxValue }
-      } }
+    # Separate valid results for charting
+    $validResults = $results | Where-Object { $_."Avg Response (ms)" -is [double] -or $_."Avg Response (ms)" -is [int] } | Sort-Object "Avg Response (ms)"
+    $failedResults = $results | Where-Object { $_."Avg Response (ms)" -is [string] }
 
     $report = New-Report "DNS Speed Benchmark"
-    $report | Add-ReportSection "Benchmark Results" $sorted "Table"
 
-    $best = $sorted | Where-Object { $_."Avg Response (ms)" -match '^\d' } | Select-Object -First 1
+    # Recommendation
+    $best = $validResults | Select-Object -First 1
     if ($best) {
-        $report | Add-ReportSection "Recommendation" "Based on this test, the fastest provider for you is <strong>$($best.Provider)</strong> ($($best.'Avg Response (ms)') ms)." "RawHtml"
+        $report | Add-ReportSection "Recommendation" "The fastest provider is <strong>$($best.Provider)</strong> ($($best.'Avg Response (ms)') ms)." "RawHtml"
+    }
+
+    # Main Chart & Table (Valid Only)
+    if ($validResults) {
+        $report | Add-ReportSection "Performance Results" $validResults "Table" @{ Label="Provider"; Value="Avg Response (ms)" }
+    }
+
+    # Failed Table
+    if ($failedResults) {
+        $report | Add-ReportSection "Failed / Unreachable" $failedResults "Table"
     }
 
     $outFile = "$env:USERPROFILE\Desktop\DNSBenchmark_$(Get-Date -Format 'yyyyMMdd_HHmm').html"

@@ -17,74 +17,54 @@ try {
         Show-Error "No Wi-Fi networks found or interface disabled."
     } else {
         $results = @()
-        $currentSSID = "Unknown"
-
-        # Parse netsh output
-        # Format is:
-        # SSID 1 : Name
-        #     Network type : Infrastructure
-        #     Authentication : WPA2-Personal
-        #     Encryption : CCMP
-        #     BSSID 1 : xx:xx:xx:xx:xx:xx
-        #         Signal : 99%
-        #         Radio type : 802.11ax
-        #         Channel : 6
-
-        # We need to handle multiple BSSIDs per SSID.
-        # Let's simplify: List each BSSID as a row or just list SSIDs.
-        # Listing BSSIDs is better for a scanner.
-
-        $currentBSSID = @{}
+        $currentSSID = "Hidden Network"
+        $currentAP = $null
 
         foreach ($line in $networks) {
             $l = $line.Trim()
-            if ($l.StartsWith("SSID")) {
-                # Flush any in-progress BSSID block before switching SSID
-                if ($currentBSSID.Keys.Count -gt 0) {
-                    $results += [PSCustomObject]$currentBSSID
-                    $currentBSSID = @{}
+
+            if ($l -match "^SSID \d+ : (.*)") {
+                # New SSID block starts.
+                # If we were tracking an AP (BSSID), save it.
+                if ($currentAP) { $results += [PSCustomObject]$currentAP; $currentAP = $null }
+
+                $ssidName = $matches[1].Trim()
+                if ([string]::IsNullOrWhiteSpace($ssidName)) { $ssidName = "Hidden Network" }
+                $currentSSID = $ssidName
+            }
+            elseif ($l -match "^BSSID \d+ : (.*)") {
+                # New BSSID (Access Point) starts under current SSID.
+                if ($currentAP) { $results += [PSCustomObject]$currentAP }
+
+                $bssid = $matches[1].Trim()
+                $currentAP = [ordered]@{
+                    SSID = $currentSSID
+                    BSSID = $bssid
+                    Signal = "0%"
+                    Radio = "Unknown"
+                    Channel = "Unknown"
                 }
-                $currentSSID = $l -replace "SSID \d+ : ", ""
-            } elseif ($l.StartsWith("BSSID")) {
-                # Flush previous BSSID (if any) before starting a new one
-                if ($currentBSSID.Keys.Count -gt 0) {
-                    $results += [PSCustomObject]$currentBSSID
-                }
-                $currentBSSID = @{ SSID = $currentSSID; BSSID = ($l -replace "BSSID \d+ : ", "") }
-            } elseif ($l.StartsWith("Signal")) {
-                if ($currentBSSID.Keys.Count -gt 0) {
-                    $sigRaw = $l -replace "Signal\s+: ", ""
-                    $currentBSSID["Signal"] = $sigRaw
-                    if ([int]::TryParse(($sigRaw -replace '%','').Trim(), [ref]$parsed)) {
-                        $currentBSSID["SignalPct"] = $parsed
-                    } else {
-                        $currentBSSID["SignalPct"] = 0
-                    }
-                }
-            } elseif ($l.StartsWith("Radio type")) {
-                if ($currentBSSID.Keys.Count -gt 0) {
-                    $currentBSSID["Radio"] = $l -replace "Radio type\s+: ", ""
-                }
-            } elseif ($l.StartsWith("Channel")) {
-                if ($currentBSSID.Keys.Count -gt 0) {
-                    $currentBSSID["Channel"] = $l -replace "Channel\s+: ", ""
-                    $results += [PSCustomObject]$currentBSSID
-                    $currentBSSID = @{}
-                }
+            }
+            elseif ($l -match "^Signal\s+:\s+(.*)") {
+                if ($currentAP) { $currentAP["Signal"] = $matches[1].Trim() }
+            }
+            elseif ($l -match "^Radio type\s+:\s+(.*)") {
+                if ($currentAP) { $currentAP["Radio"] = $matches[1].Trim() }
+            }
+            elseif ($l -match "^Channel\s+:\s+(.*)") {
+                if ($currentAP) { $currentAP["Channel"] = $matches[1].Trim() }
             }
         }
 
-        # Flush trailing BSSID block if output ended without "Channel"
-        if ($currentBSSID.Keys.Count -gt 0) {
-            $results += [PSCustomObject]$currentBSSID
-            $currentBSSID = @{}
-        }
+        # Save last one
+        if ($currentAP) { $results += [PSCustomObject]$currentAP }
 
         if ($results.Count -gt 0) {
-            $sorted = $results | Sort-Object SignalPct -Descending
+            # Convert Signal to Int for sorting
+            $sorted = $results | Sort-Object @{ Expression = { [int]($_.Signal -replace '%','') } } -Descending
 
             $report = New-Report "Wi-Fi Network Scan"
-            $report | Add-ReportSection "Nearby Networks ($($results.Count))" $sorted "Table"
+            $report | Add-ReportSection "Nearby Access Points ($($results.Count))" $sorted "Table" @{ Label="SSID"; Value="Signal" }
 
             $outFile = "$env:USERPROFILE\Desktop\WifiScan_$(Get-Date -Format 'yyyyMMdd_HHmm').html"
             $report | Export-Report-Html $outFile
@@ -92,9 +72,7 @@ try {
             Show-Success "Scan finished. Found $($results.Count) access points."
             Invoke-Item $outFile
         } else {
-            # Fallback if parsing failed or no BSSIDs
-             Write-Host "Parsing failed or no details found. Raw Output:"
-             $networks | ForEach-Object { Write-Host $_ -ForegroundColor Gray }
+            Show-Info "No networks found."
         }
     }
 } catch {

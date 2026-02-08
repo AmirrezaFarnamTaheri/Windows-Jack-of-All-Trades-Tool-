@@ -484,7 +484,9 @@ namespace SystemMaintenance.Forms
                     try {
                         SystemStatsData stats = await SystemStatsService.Instance.GetStatsAsync();
                         if (!IsDisposed && !dashboardPanel.IsDisposed) Invoke((Action)(() => updateUI(stats)));
-                    } catch {}
+                    } catch (Exception ex) {
+                        if (!IsDisposed) Invoke((Action)(() => Log("Dashboard Stats Error: " + ex.Message, "WARN")));
+                    }
                 });
             }
 
@@ -744,7 +746,12 @@ namespace SystemMaintenance.Forms
             }
 
             txtLog.AppendText(line);
-            // txtLog.ScrollToCaret(); // Performance hit?
+
+            // Auto-scroll
+            try {
+                txtLog.SelectionStart = txtLog.Text.Length;
+                txtLog.ScrollToCaret();
+            } catch {}
         }
 
         private void ChkBatchMode_CheckedChanged(object sender, EventArgs e)

@@ -11,22 +11,27 @@ try {
 
     foreach ($conn in $connections) {
         $procName = "Unknown"
+        $procPath = "N/A"
         $procId = $conn.OwningProcess
 
-        $proc = Get-Process -Id $procId -ErrorAction SilentlyContinue
-        if ($proc) {
+        try {
+            $proc = Get-Process -Id $procId -ErrorAction Stop
             $procName = $proc.ProcessName
-            # Try to get path if possible (might require higher privs or fail for system procs)
-            # $path = $proc.Path
+            $procPath = $proc.Path
+        } catch {
+            # System processes might deny access to Path
+            if ($procName -eq "Unknown") { $procName = "PID $procId" }
         }
 
         $reportData += [PSCustomObject]@{
             Port = $conn.LocalPort
-            Protocol = "TCP" # Get-NetTCPConnection implies TCP
+            Address = $conn.LocalAddress
             PID = $procId
             Process = $procName
-            "Local Address" = $conn.LocalAddress
+            Path = $procPath
         }
+
+        Write-Log "Port $($conn.LocalPort): $procName" "Gray"
     }
 
     if ($reportData.Count -gt 0) {

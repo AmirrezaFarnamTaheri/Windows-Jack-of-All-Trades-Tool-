@@ -12,9 +12,10 @@ try {
         Write-Section "Wiping"
         $len = (Get-Item $file).Length
         $chunkSize = 1048576 * 64  # 64 MB
-        $fs = [System.IO.File]::OpenWrite($file)
 
         try {
+            $fs = [System.IO.File]::OpenWrite($file)
+
             # Pass 1: Zeros
             Write-Log "Pass 1: Overwriting with Zeros..." "Gray"
             $zeroBuf = New-Object byte[] ([Math]::Min($chunkSize, $len))
@@ -57,13 +58,24 @@ try {
             }
             $fs.Flush($true)
 
-        } finally {
             $fs.Close()
             $fs.Dispose()
+
+        } catch {
+            $fs.Close()
+            $fs.Dispose()
+            throw
         }
 
+        # Obfuscate Name before deletion (MFT anti-forensics)
+        $dir = Split-Path $file -Parent
+        $randomName = [System.IO.Path]::GetRandomFileName()
+        $tempPath = Join-Path $dir $randomName
+        Write-Log "Obfuscating filename..."
+        Rename-Item -Path $file -NewName $randomName -Force -ErrorAction SilentlyContinue
+
         Write-Log "Deleting file..."
-        Remove-Item $file -Force
+        Remove-Item $tempPath -Force
         Show-Success "File securely deleted."
     } else {
         Show-Error "File not found or is a directory."

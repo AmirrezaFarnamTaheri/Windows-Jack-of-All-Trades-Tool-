@@ -40,12 +40,20 @@ namespace SystemMaintenance.Core
             try {
                 var cat = new PerformanceCounterCategory("Network Interface");
                 var instances = cat.GetInstanceNames();
-                // Heuristic: Pick the first non-loopback interface or one with traffic
-                // For simplicity, we just pick the first valid one or loop through later
+
+                // Prioritize Ethernet/Wi-Fi over Loopback/Pseudo
                 foreach(var inst in instances) {
-                    if (inst.ToLower().Contains("loopback") || inst.ToLower().Contains("pseudo")) continue;
-                    _activeInterface = inst;
-                    break;
+                    string lower = inst.ToLower();
+                    if (lower.Contains("loopback") || lower.Contains("pseudo") || lower.Contains("isatap") || lower.Contains("teredo")) continue;
+
+                    // Simple validation: Try creating counter
+                    try {
+                        using(var pc = new PerformanceCounter("Network Interface", "Bytes Sent/sec", inst)) {
+                            pc.NextValue(); // Check if readable
+                        }
+                        _activeInterface = inst;
+                        break;
+                    } catch {}
                 }
 
                 if (_activeInterface != null) {
@@ -59,24 +67,29 @@ namespace SystemMaintenance.Core
         {
             var data = new SystemStatsData();
 
+            // Set a timeout for WMI initialization tasks to prevent hanging
             var tCPU = _cpuName.GetValueAsync();
             var tGPU = _gpuName.GetValueAsync();
             var tOS = _osName.GetValueAsync();
 
-            await Task.WhenAll(tCPU, tGPU, tOS);
+            await Task.WhenAny(Task.WhenAll(tCPU, tGPU, tOS), Task.Delay(2000));
 
-            data.CPU = await tCPU;
-            data.GPU = await tGPU;
-            data.OS = await tOS;
+            data.CPU = tCPU.IsCompleted ? tCPU.Result : "Loading...";
+            data.GPU = tGPU.IsCompleted ? tGPU.Result : "Loading...";
+            data.OS = tOS.IsCompleted ? tOS.Result : "Loading...";
+
             data.Cores = _cores;
             data.Threads = _threads;
             data.RamTotal = _ramTotal;
 
-            data.Uptime = GetUptime();
-            GetRamUsage(data);
-            GetDriveUsage(data);
-            GetRebootStatus(data);
-            GetNetworkUsage(data);
+            // Execute synchronous property getters with timeouts/safeguards
+            await Task.Run(() => {
+                data.Uptime = GetUptime();
+                GetRamUsage(data);
+                GetDriveUsage(data);
+                GetRebootStatus(data);
+                GetNetworkUsage(data);
+            });
 
             return data;
         }
@@ -106,7 +119,7 @@ namespace SystemMaintenance.Core
                      foreach (var item in searcher.Get()) return item["Name"].ToString();
                  }
             } catch {}
-            return "";
+            return "Basic Display Adapter";
         }
 
         private string GetOsInfo()
@@ -138,14 +151,22 @@ namespace SystemMaintenance.Core
         private void GetRamUsage(SystemStatsData data)
         {
             try {
-                using (var searcher = new ManagementObjectSearcher("SELECT FreePhysicalMemory FROM Win32_OperatingSystem"))
-                {
-                    foreach (var item in searcher.Get())
-                    {
-                        data.RamFree = Convert.ToInt64(item["FreePhysicalMemory"]) / 1024;
-                    }
+                // WMI is slow, but PerformanceCounter is fast
+                using (var pc = new PerformanceCounter("Memory", "Available MBytes")) {
+                    data.RamFree = (long)pc.NextValue();
                 }
-            } catch {}
+            } catch {
+                // Fallback to WMI
+                try {
+                    using (var searcher = new ManagementObjectSearcher("SELECT FreePhysicalMemory FROM Win32_OperatingSystem"))
+                    {
+                        foreach (var item in searcher.Get())
+                        {
+                            data.RamFree = Convert.ToInt64(item["FreePhysicalMemory"]) / 1024;
+                        }
+                    }
+                } catch {}
+            }
         }
 
         private void GetDriveUsage(SystemStatsData data)

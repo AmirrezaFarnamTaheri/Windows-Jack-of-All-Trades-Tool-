@@ -7,47 +7,76 @@ try {
     Write-Section "Scanning Tasks"
     Write-Log "Filtering out default Microsoft/Windows tasks..." "Cyan"
 
-    # Advanced filter: Exclude Microsoft/Windows/Intel/NVIDIA/AMD generally
+    # 1. Standard Third-Party Tasks
     $tasks = Get-ScheduledTask | Where-Object {
         $_.Author -notmatch "Microsoft" -and
         $_.Author -notmatch "Windows" -and
         $_.TaskPath -notmatch "\\Microsoft\\Windows"
     }
 
-    if ($tasks) {
-        $taskData = @()
-        foreach ($t in $tasks) {
-            $stateHtml = if ($t.State -eq 'Running') { "<span class='status-pass'>Running</span>" }
-                         elseif ($t.State -eq 'Disabled') { "<span class='status-warn'>Disabled</span>" }
-                         else { $t.State }
+    $reportData = @()
 
-            # Highlight suspicious paths
-            $pathHtml = $t.TaskPath
-            if ($t.TaskPath -eq '\' -or $t.TaskPath -eq '/') { $pathHtml = "<span class='status-fail'>Root (\)</span>" }
+    foreach ($t in $tasks) {
+        $stateHtml = if ($t.State -eq 'Running') { "<span class='status-pass'>Running</span>" }
+                     elseif ($t.State -eq 'Disabled') { "<span class='status-warn'>Disabled</span>" }
+                     else { $t.State }
 
-            $actions = ($t.Actions | ForEach-Object { $_.Execute + " " + $_.Arguments }) -join "<br>"
+        # Check for root path (Suspicious)
+        $pathHtml = $t.TaskPath
+        if ($t.TaskPath -eq '\' -or $t.TaskPath -eq '/') { $pathHtml = "<span class='status-fail'>Root (\)</span>" }
 
-            $taskData += [PSCustomObject]@{
+        # Check for High Privileges
+        $privHtml = "Normal"
+        if ($t.Principal.RunLevel -eq "Highest") { $privHtml = "<span class='status-warn'>Highest</span>" }
+
+        $actions = ($t.Actions | ForEach-Object { $_.Execute + " " + $_.Arguments }) -join "<br>"
+
+        $reportData += [PSCustomObject]@{
+            Name = $t.TaskName
+            State = $stateHtml
+            Location = $pathHtml
+            Author = $t.Author
+            Privilege = $privHtml
+            Action = $actions
+            User = $t.Principal.UserId
+        }
+    }
+
+    $report = New-Report "Scheduled Task Audit"
+
+    if ($reportData.Count -gt 0) {
+        $report | Add-ReportSection "Third-Party Tasks ($($reportData.Count))" $reportData "Table"
+    } else {
+        $report | Add-ReportSection "Third-Party Tasks" "No non-Microsoft tasks found." "Text"
+    }
+
+    # 2. Suspicious System Tasks (Heuristic)
+    # Check for tasks running as SYSTEM but executing files in user-writable dirs (AppData, Temp, Public)
+    Write-Log "Analyzing System tasks for path anomalies..." "Cyan"
+    $susTasks = Get-ScheduledTask | Where-Object {
+        $_.Principal.UserId -match "SYSTEM" -and
+        ($_.Actions.Execute -match "AppData" -or $_.Actions.Execute -match "Temp" -or $_.Actions.Execute -match "Public")
+    }
+
+    if ($susTasks) {
+        $susData = @()
+        foreach ($t in $susTasks) {
+            $susData += [PSCustomObject]@{
                 Name = $t.TaskName
-                State = $stateHtml
-                Path = $pathHtml
-                Author = $t.Author
-                Action = $actions
-                "Next Run" = try { $t.NextRunTime } catch { "N/A" }
+                Action = ($t.Actions.Execute + " " + $t.Actions.Arguments)
+                Path = $t.TaskPath
             }
         }
-
-        $report = New-Report "Scheduled Task Audit (Third-Party)"
-        $report | Add-ReportSection "Tasks Found ($($tasks.Count))" $taskData "Table"
-
-        $outFile = "$env:USERPROFILE\Desktop\TaskAudit_$(Get-Date -Format 'yyyyMMdd_HHmm').html"
-        $report | Export-Report-Html $outFile
-
-        Show-Success "Found $($tasks.Count) non-standard tasks. Report saved."
-        Invoke-Item $outFile
-    } else {
-        Show-Success "No obvious third-party tasks found."
+        $report | Add-ReportSection "Suspicious System Tasks (Writable Paths)" $susData "Table"
+        Write-Log "Found $($susTasks.Count) suspicious System tasks." "Red"
     }
+
+    $outFile = "$env:USERPROFILE\Desktop\TaskAudit_$(Get-Date -Format 'yyyyMMdd_HHmm').html"
+    $report | Export-Report-Html $outFile
+
+    Show-Success "Audit Complete. Report saved."
+    Invoke-Item $outFile
+
 } catch {
     Show-Error "Error: $($_.Exception.Message)"
 }

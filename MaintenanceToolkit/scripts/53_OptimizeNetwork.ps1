@@ -5,7 +5,7 @@ Get-SystemSummary
 
 try {
     Write-Section "Current State"
-    $before = Get-NetTCPSetting | Select-Object SettingName, AutoTuningLevelLocal
+    $before = Get-NetTCPSetting | Select-Object SettingName, AutoTuningLevelLocal | Select-Object -First 1
     Write-Log "Current Autotuning: $($before.AutoTuningLevelLocal)" "Gray"
 
     Write-Section "Applying Optimizations"
@@ -24,7 +24,7 @@ try {
 
     Write-Section "Verification"
     Start-Sleep -Seconds 1
-    $after = Get-NetTCPSetting | Select-Object SettingName, AutoTuningLevelLocal
+    $after = Get-NetTCPSetting | Select-Object SettingName, AutoTuningLevelLocal | Select-Object -First 1
 
     if ($after.AutoTuningLevelLocal -eq 'Normal') {
         Show-Success "Optimization Applied Successfully."
@@ -37,6 +37,8 @@ try {
     if ($ping) {
         $avg = ($ping | Measure-Object -Property ResponseTime -Average).Average
         Write-Log "Average Ping: $avg ms" "Green"
+    } else {
+        Write-Log "Ping failed. Check connectivity." "Red"
     }
 
 } catch {
