@@ -32,7 +32,7 @@ function Show-Help {
     } else {
         Show-Error "Help file not found."
     }
-    if (-not [Console]::IsInputRedirected) { Pause }
+    Pause-If-Interactive
 }
 
 function Show-SubMenu ($Category) {
@@ -140,9 +140,7 @@ function Show-SubMenu ($Category) {
     $choice = Read-Host "Enter Script Number"
     if ($choice -eq 'B' -or $choice -eq 'b') { return }
     Run-Script $choice
-    if (-not [Console]::IsInputRedirected) {
-        Pause
-    }
+    Pause-If-Interactive
 }
 
 # Main Loop

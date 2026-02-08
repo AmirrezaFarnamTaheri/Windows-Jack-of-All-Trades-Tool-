@@ -35,6 +35,7 @@ try {
     Write-Log "Launching Windows Disk Cleanup (cleanmgr.exe)..." "Cyan"
     Write-Log "This may take several minutes. Please wait." "White"
 
+    # Start-Process with correct arguments
     $p = Start-Process cleanmgr.exe -ArgumentList "/sagerun:1" -PassThru -NoNewWindow -Wait
 
     # 4. Result

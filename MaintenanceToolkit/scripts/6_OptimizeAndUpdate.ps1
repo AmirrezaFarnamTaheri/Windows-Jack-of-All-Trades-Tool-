@@ -1,64 +1,48 @@
 . "$PSScriptRoot/lib/Common.ps1"
 Assert-Admin
-Write-Header "Software Update & Optimization"
+Write-Header "Software Update Manager"
 Get-SystemSummary
 
-# 1. Winget Upgrade
-if (Test-IsWingetAvailable) {
-    Write-Section "Winget Updates"
-    Write-Log "Checking for application updates..." "Cyan"
-
-    try {
-        # Update sources first
-        Start-Process winget -ArgumentList "source update" -Wait -NoNewWindow -ErrorAction SilentlyContinue
-
-        # Run Upgrade
-        $wingetArgs = "upgrade", "--all", "--include-unknown", "--accept-package-agreements", "--accept-source-agreements"
-
-        Write-Log "Running: winget upgrade --all" "Gray"
-        $proc = Start-Process winget -ArgumentList $wingetArgs -Wait -NoNewWindow -PassThru
-
-        if ($proc.ExitCode -eq 0) {
-            Show-Success "All compatible apps updated."
-        } elseif ($proc.ExitCode -eq 1) {
-            # Code 1 often means "no updates found" or generic error
-            Show-Info "No updates found or upgrade process completed."
-        } else {
-            Write-Log "Winget exited with code: $($proc.ExitCode)" "Yellow"
-        }
-    } catch {
-        Show-Error "Winget failed: $($_.Exception.Message)"
-    }
-} else {
-    Write-Log "Winget not found. Skipping updates." "Yellow"
+if (-not (Test-IsWingetAvailable)) {
+    Show-Error "Winget is not installed on this system."
+    Pause-If-Interactive
+    Exit
 }
 
-# 2. Power Plan
-Write-Section "System Optimization"
-Write-Log "Optimizing Power Settings..." "Cyan"
 try {
-    # Check if High Performance exists, otherwise restore defaults
-    $plans = powercfg /list
-    if ($plans -match "High performance") {
-        Write-Log "High Performance plan detected." "Gray"
+    Write-Section "Checking for Updates"
+    Write-Log "Querying installed packages via Winget..." "Cyan"
+
+    # List upgrades
+    $upgrades = winget upgrade --include-unknown
+    $upgrades | ForEach-Object { Write-Host $_ -ForegroundColor Gray }
+
+    if ($upgrades -match "No installed package found matching input criteria") {
+        Show-Success "All apps are up to date!"
     } else {
-        Write-Log "Restoring default power schemes..." "Yellow"
-        Start-Process powercfg -ArgumentList "-restoredefaultschemes" -Wait -NoNewWindow
+        Write-Host ""
+        Write-Log "Starting Update Process..." "Yellow"
+        Write-Log "Note: Some installers may request interaction or require closing apps." "Gray"
+
+        # We run upgrade all.
+        # --accept-source-agreements: Auto-accept store agreements
+        # --accept-package-agreements: Auto-accept EULAs
+        # --include-unknown: Update even if version is 'Unknown'
+
+        $args = "upgrade --all --include-unknown --accept-package-agreements --accept-source-agreements"
+
+        $p = Start-Process winget -ArgumentList $args -Wait -NoNewWindow -PassThru
+
+        if ($p.ExitCode -eq 0) {
+            Show-Success "Updates completed successfully."
+        } else {
+            Show-Warning "Updates completed with warnings or errors (Exit Code: $($p.ExitCode))."
+            Write-Log "Common causes: Locked files (running apps), Network issues, or Hash mismatches." "Gray"
+        }
     }
+
 } catch {
-    Write-Log "Power optimization skipped." "Gray"
+    Show-Error "Update process failed: $($_.Exception.Message)"
 }
-
-# 3. NGEN (Native Image Generator) - Optimizes .NET apps
-Write-Section ".NET Optimization"
-$ngen = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\ngen.exe"
-if (Test-Path $ngen) {
-    Write-Log "Running NGEN Update (This compiles .NET assemblies for speed)..." "Cyan"
-    Start-Process $ngen -ArgumentList "update /nologo" -Wait -NoNewWindow
-    Show-Success ".NET Optimization Complete."
-}
-
-Write-Section "Complete"
-Show-Success "Update and Optimization sequence finished."
 
 Pause-If-Interactive

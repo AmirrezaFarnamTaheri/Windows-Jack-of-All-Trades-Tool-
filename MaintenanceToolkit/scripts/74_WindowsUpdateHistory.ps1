@@ -20,6 +20,7 @@ try {
     if ($count -gt 0) {
         $history = $searcher.QueryHistory(0, $count)
         $reportData = @()
+        $lastSuccessDate = $null
 
         foreach ($entry in $history) {
             $status = switch ($entry.ResultCode) {
@@ -30,6 +31,10 @@ try {
                 default { "Unknown ($($entry.ResultCode))" }
             }
 
+            if ($entry.ResultCode -eq 2 -and $lastSuccessDate -eq $null) {
+                $lastSuccessDate = $entry.Date
+            }
+
             $reportData += [PSCustomObject]@{
                 Date = $entry.Date
                 Result = $status
@@ -38,7 +43,15 @@ try {
             }
         }
 
+        # Calculate Metric
+        $daysSince = "Unknown"
+        if ($lastSuccessDate) {
+            $diff = (Get-Date) - $lastSuccessDate
+            $daysSince = "$([math]::Round($diff.TotalDays, 0)) day(s) ago ($($lastSuccessDate.ToShortDateString()))"
+        }
+
         $report = New-Report "Windows Update History (Last $count)"
+        $report | Add-ReportSection "Status Summary" "<strong>Last Successful Update:</strong> $daysSince" "RawHtml"
         $report | Add-ReportSection "Recent Updates" $reportData "Table"
 
         $outFile = "$env:USERPROFILE\Desktop\UpdateHistory_$(Get-Date -Format 'yyyyMMdd_HHmm').html"

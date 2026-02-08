@@ -15,6 +15,7 @@ namespace SystemMaintenance.Core
         private readonly object _processLock = new object();
         private string _tempScriptDir;
         private int _scriptRunning = 0;
+        private bool _disposed = false;
 
         public bool IsScriptRunning => _scriptRunning == 1;
 
@@ -27,6 +28,7 @@ namespace SystemMaintenance.Core
 
         public async Task RunScriptAsync(ScriptInfo script, bool verbose, CancellationToken ct)
         {
+            if (_disposed) throw new ObjectDisposedException(nameof(ScriptExecutor));
             if (Interlocked.CompareExchange(ref _scriptRunning, 1, 0) != 0)
                 throw new InvalidOperationException("Script already running.");
 
@@ -50,10 +52,6 @@ namespace SystemMaintenance.Core
             }
 
             try {
-                // For interactive scripts, we must use -NoExit to keep the window open,
-                // but we also want to know when it closes if possible.
-                // However, Start-Process -Wait in PS or Process.WaitForExit in C# with ShellExecute is tricky.
-
                 string args;
                 if (script.IsInteractive)
                 {
@@ -77,15 +75,15 @@ namespace SystemMaintenance.Core
 
                 if (script.IsInteractive)
                 {
-                    psi.UseShellExecute = false; // Must be false to pass Environment Variables
-                    psi.CreateNoWindow = false;  // Allow window creation
+                    psi.UseShellExecute = false;
+                    psi.CreateNoWindow = false;
 
                     using (Process p = new Process { StartInfo = psi })
                     {
+                         lock(_processLock) _currentProcess = p;
                          p.Start();
-
-                         // For interactive, we wait to track execution state properly
                          p.WaitForExit();
+                         lock(_processLock) _currentProcess = null;
                     }
                 }
                 else
@@ -109,7 +107,7 @@ namespace SystemMaintenance.Core
                         p.BeginErrorReadLine();
 
                         while (!p.HasExited) {
-                            if (ct.IsCancellationRequested) {
+                            if (ct.IsCancellationRequested || _disposed) {
                                 try { p.Kill(); } catch {}
                                 OnOutput?.Invoke("Process cancelled.");
                                 break;
@@ -117,7 +115,7 @@ namespace SystemMaintenance.Core
                             Thread.Sleep(100);
                         }
 
-                        if (!ct.IsCancellationRequested) p.WaitForExit();
+                        if (!ct.IsCancellationRequested && !_disposed) p.WaitForExit();
 
                         lock(_processLock) _currentProcess = null;
                     }
@@ -140,17 +138,30 @@ namespace SystemMaintenance.Core
         {
             string baseDir = AppDomain.CurrentDomain.BaseDirectory;
 
-            // Search paths
+            // Normalize path separator just in case
+            fileName = fileName.TrimStart('\', '/');
+
+            // Search paths: prioritized order
             string[] potentialPaths = new string[] {
+                // 1. Direct 'scripts' folder next to exe (Release/Production)
                 Path.Combine(baseDir, "scripts", fileName),
+
+                // 2. 'MaintenanceToolkit/scripts' next to exe (Unzipped structure sometimes)
+                Path.Combine(baseDir, "MaintenanceToolkit", "scripts", fileName),
+
+                // 3. Parent dir (Running from inside bin/Debug?)
                 Path.Combine(baseDir, "..", "scripts", fileName),
-                Path.Combine(baseDir, "..", "..", "scripts", fileName), // Dev env
-                Path.Combine(baseDir, "MaintenanceToolkit", "scripts", fileName)
+
+                // 4. Grandparent dir (Dev environment)
+                Path.Combine(baseDir, "..", "..", "scripts", fileName),
+
+                // 5. Explicit check for dev root (e.g. if running from nested bin folder)
+                Path.Combine(baseDir, "..", "..", "..", "scripts", fileName)
             };
 
             foreach (string p in potentialPaths)
             {
-                if (File.Exists(p)) return p;
+                if (File.Exists(p)) return Path.GetFullPath(p);
             }
 
             // Embedded fallback
@@ -221,6 +232,11 @@ namespace SystemMaintenance.Core
 
         public void Dispose()
         {
+            if (_disposed) return;
+
+            Cancel(); // Kill any running process
+            _disposed = true;
+
             if (_tempScriptDir != null && Directory.Exists(_tempScriptDir))
             {
                 try { Directory.Delete(_tempScriptDir, true); } catch {}

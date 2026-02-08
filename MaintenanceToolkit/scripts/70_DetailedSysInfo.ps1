@@ -31,6 +31,10 @@ try {
     $ramUsed = $ramTotal - $ramFree
     $ramPct = [math]::Round(($ramUsed / $ramTotal) * 100, 1)
 
+    # Disk Space (Detailed)
+    $drives = Get-PSDrive -PSProvider FileSystem | Select-Object Name, @{N="Size(GB)";E={[math]::Round($_.Used/1GB + $_.Free/1GB, 2)}}, @{N="Free(GB)";E={[math]::Round($_.Free/1GB, 2)}}
+    $driveHtml = $drives | ConvertTo-Html -Fragment
+
     $report | Add-ReportSection "Hardware Summary" @{
         "Processor" = "$($cpu.Name)"
         "Cores / Threads" = "$($cpu.NumberOfCores) / $($cpu.NumberOfLogicalProcessors)"
@@ -38,6 +42,8 @@ try {
         "Free RAM" = "$ramFree GB"
         "Memory Usage" = (New-ProgressBarHtml $ramPct "$ramPct% Used")
     } "KeyValue"
+
+    $report | Add-ReportSection "Disk Drives" $drives "Table"
 
     # Security Summary
     $secInfo = [ordered]@{}
@@ -85,7 +91,7 @@ try {
         }
         $report | Add-ReportSection "BitLocker Status" $volList "Table"
     } else {
-        $report | Add-ReportSection "BitLocker Status" "BitLocker management is not available or no protected volumes found."
+        $report | Add-ReportSection "BitLocker Status" "BitLocker management is not available or no protected volumes found." "Text"
     }
 
     # Network Adapters

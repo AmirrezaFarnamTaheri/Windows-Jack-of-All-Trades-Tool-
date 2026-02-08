@@ -5,46 +5,34 @@ Get-SystemSummary
 
 try {
     Write-Section "Clearing Current Content"
-    Set-Clipboard $null
 
-    # Verify
-    if (-not (Get-Clipboard)) {
+    # Try to clear clipboard using PowerShell cmdlet (Text/FileDrop list)
+    try {
+        Set-Clipboard $null -ErrorAction Stop
         Show-Success "Current clipboard cleared."
+    } catch {
+        Write-Log "Failed to clear active clipboard via PowerShell." "Yellow"
     }
 
     # Attempt to clear history (Windows 10/11)
     Write-Section "Clearing Clipboard History"
-    try {
-        # Using WinRT API via PowerShell
-        $code = @"
-using System;
-using System.Runtime.InteropServices;
-using Windows.ApplicationModel.DataTransfer;
 
-public class ClipboardHelper {
-    public static bool ClearHistory() {
-        return Clipboard.ClearHistory();
-    }
-}
-"@
-        # This requires Windows Runtime references which are tricky in PS 5.1
-        # Fallback to simple Restart-Service for Clipboard User Service if possible,
-        # or just warn user.
+    # Check if history service is running
+    $svc = Get-Service | Where-Object { $_.Name -like "cbdhsvc*" -and $_.Status -eq 'Running' }
 
-        Write-Log "To clear Clipboard History (Win+V), we will restart the service." "Cyan"
+    if ($svc) {
+        Write-Log "Clipboard User Service ($($svc.Name)) is running." "Cyan"
+        Write-Log "Restarting service to flush history..." "Yellow"
 
-        # Service name usually: cbdhsvc_xxxxx (per user)
-        $svc = Get-Service | Where-Object { $_.Name -like "cbdhsvc*" }
-        if ($svc) {
-            Stop-Service -Name $svc.Name -Force -ErrorAction SilentlyContinue
-            Start-Service -Name $svc.Name -ErrorAction SilentlyContinue
-            Show-Success "Clipboard User Service restarted."
-        } else {
-            Write-Log "Clipboard service not found or accessible." "Yellow"
+        try {
+            Stop-Service -Name $svc.Name -Force -ErrorAction Stop
+            Start-Service -Name $svc.Name -ErrorAction Stop
+            Show-Success "Clipboard History flushed (Service Restarted)."
+        } catch {
+            Show-Error "Failed to restart service: $($_.Exception.Message)"
         }
-
-    } catch {
-        Write-Log "Could not clear history programmatically." "Yellow"
+    } else {
+        Write-Log "Clipboard history service not active or found. History likely already empty or disabled." "Gray"
     }
 
 } catch {

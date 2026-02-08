@@ -12,19 +12,35 @@ try {
               Where-Object { $_.Properties[8].Value -eq 2 -or $_.Properties[8].Value -eq 10 }
 
     if ($events) {
+        $logonData = @()
+
         foreach ($e in $events) {
             $user = $e.Properties[5].Value
-            $type = if ($e.Properties[8].Value -eq 2) { "Local" } else { "RDP" }
+            $type = if ($e.Properties[8].Value -eq 2) { "Local (Interactive)" } else { "Remote (RDP)" }
             $ip = $e.Properties[18].Value
+            if ([string]::IsNullOrWhiteSpace($ip) -or $ip -eq "-") { $ip = "Localhost" }
 
-            Write-Host "[$($e.TimeGenerated)] " -NoNewline -ForegroundColor Gray
-            Write-Host "$user " -NoNewline -ForegroundColor White
-            Write-Host "($type) " -NoNewline -ForegroundColor Cyan
-            Write-Host "from $ip" -ForegroundColor DarkGray
+            $logonData += [PSCustomObject]@{
+                Time = $e.TimeGenerated
+                User = $user
+                Type = $type
+                SourceIP = $ip
+            }
+
+            # Console feedback
+            Write-Log "[$($e.TimeGenerated)] $user ($type) from $ip" "Cyan"
         }
-        Show-Success "Audit Complete."
+
+        $report = New-Report "User Login History Audit"
+        $report | Add-ReportSection "Recent Interactive Logons" $logonData "Table"
+
+        $outFile = "$env:USERPROFILE\Desktop\LoginHistory_$(Get-Date -Format 'yyyyMMdd_HHmm').html"
+        $report | Export-Report-Html $outFile
+
+        Show-Success "Found $($logonData.Count) events. Report saved to Desktop."
+        Invoke-Item $outFile
     } else {
-        Write-Log "No recent interactive login events found." "Yellow"
+        Show-Info "No recent interactive login events found."
     }
 
 } catch {

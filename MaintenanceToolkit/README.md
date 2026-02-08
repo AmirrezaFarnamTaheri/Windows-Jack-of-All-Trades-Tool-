@@ -1,10 +1,10 @@
 # Ultimate System Maintenance Toolkit
 
 ## Overview
-This toolkit contains 65 specialized PowerShell scripts and a Modern C# GUI Application to manage the health, security, and performance of your Windows PC.
+This toolkit contains 80+ specialized PowerShell scripts and a Modern C# GUI Application to manage the health, security, and performance of your Windows PC.
 
 ## Structure
-- **scripts/**: Contains all 65 modular scripts.
+- **scripts/**: Contains all modular scripts.
 - **source/**: Contains the C# source code for the GUI.
 - **BuildTool.ps1**: A script to compile the C# application without needing Visual Studio.
 - **MaintenanceTool.exe**: The final application (after building).

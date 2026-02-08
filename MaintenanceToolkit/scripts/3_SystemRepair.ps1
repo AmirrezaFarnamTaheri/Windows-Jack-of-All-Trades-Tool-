@@ -23,8 +23,6 @@ try {
         Write-Log "No Internet Connection. DISM may fail if source files are missing." "Yellow"
     }
 
-    # We skip separate ScanHealth and go straight to RestoreHealth if CheckHealth failed or if user wants full maintenance.
-    # Actually, RestoreHealth includes ScanHealth logic.
     Write-Log "Running DISM /RestoreHealth..." "Cyan"
     $dism = Start-Process -FilePath "dism.exe" -ArgumentList "/Online /Cleanup-Image /RestoreHealth" -Wait -NoNewWindow -PassThru
 
@@ -50,9 +48,12 @@ try {
         }
     }
 
-    # 3. Cleanup Component Store
+    # 3. Cleanup Component Store (Optional but good maintenance)
     Write-Section "Step 3: Component Store Cleanup"
-    Start-Process -FilePath "dism.exe" -ArgumentList "/Online /Cleanup-Image /AnalyzeComponentStore" -Wait -NoNewWindow
+    $clean = Start-Process -FilePath "dism.exe" -ArgumentList "/Online /Cleanup-Image /AnalyzeComponentStore" -Wait -NoNewWindow -PassThru
+    if ($clean.ExitCode -eq 0) {
+        Write-Log "Component Store analysis complete." "Green"
+    }
 
     Write-Section "Repair Complete"
     Show-Success "System repair operations finished."

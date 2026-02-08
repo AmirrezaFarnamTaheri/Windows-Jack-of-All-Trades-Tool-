@@ -14,10 +14,14 @@ try {
     if (Test-Path $searchDataPath) {
         Write-Log "Deleting Search Database..." "Cyan"
         Remove-Item "$searchDataPath\*" -Recurse -Force -ErrorAction SilentlyContinue
+    } else {
+        Write-Log "Search database path not found (typical on some builds)." "Gray"
     }
 
     Write-Log "Resetting Registry SetupCompletedSuccessfully flag..."
-    Set-ItemProperty -Path $searchRegKey -Name "SetupCompletedSuccessfully" -Value 0 -ErrorAction SilentlyContinue
+    if (Test-Path $searchRegKey) {
+        Set-ItemProperty -Path $searchRegKey -Name "SetupCompletedSuccessfully" -Value 0 -ErrorAction SilentlyContinue
+    }
 
     Write-Log "Restarting Windows Search Service..." "Cyan"
     Start-Service "wsearch" -ErrorAction SilentlyContinue
