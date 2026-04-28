@@ -8,9 +8,13 @@ namespace SystemMaintenance.Core
 
         public static void Log(string message, string type = "INFO")
         {
-            OnLogMessage?.Invoke(message, type);
+            var handler = OnLogMessage;
+            if (handler != null) handler(message, type);
         }
 
-        public static void Error(string message) => Log(message, "ERROR");
+        public static void Error(string message)
+        {
+            Log(message, "ERROR");
+        }
     }
 }

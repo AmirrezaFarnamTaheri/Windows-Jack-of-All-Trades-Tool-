@@ -6,7 +6,7 @@ Write-Section "Instructions"
 Write-Log "This script will flash colors rapidly to try and unstuck pixels." "Cyan"
 Write-Log "Press ESC to stop." "Yellow"
 Write-Host "`nPress any key to START..." -ForegroundColor White
-if (-not [Console]::IsInputRedirected) { $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown") }
+if ($env:MAINTENANCE_GUI_HOST -ne '1' -and -not [Console]::IsInputRedirected) { $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown") }
 
 try {
     Add-Type -AssemblyName System.Windows.Forms

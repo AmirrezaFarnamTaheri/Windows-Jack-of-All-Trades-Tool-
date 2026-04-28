@@ -31,6 +31,7 @@ Alternatively, the GitHub Actions workflow included in `.github/workflows/build-
 - **Safety First:** Destructive actions require confirmation.
 - **Search:** Quickly find tools by name or description.
 - **Cancellation:** Stop long-running non-interactive scripts.
+- **Diagnostics Center:** Safe read-only diagnostics bundle that generates a consolidated HTML report.
 - **CLI Mode:** Includes `_MasterMenu.ps1` for command-line usage.
 
 ## Safety

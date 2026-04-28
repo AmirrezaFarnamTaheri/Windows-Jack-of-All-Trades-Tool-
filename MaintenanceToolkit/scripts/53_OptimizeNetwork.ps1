@@ -33,7 +33,8 @@ try {
     }
 
     Write-Section "Latency Test (Google DNS)"
-    $ping = Test-Connection -ComputerName 8.8.8.8 -Count 4 -ErrorAction SilentlyContinue
+    $target = "8.8.8.8"
+    $ping = Test-Connection -ComputerName $target -Count 4 -ErrorAction SilentlyContinue
     if ($ping) {
         $avg = ($ping | Measure-Object -Property ResponseTime -Average).Average
         Write-Log "Average Ping: $avg ms" "Green"

@@ -30,11 +30,11 @@ namespace SystemMaintenance.Core
             form.ForeColor = fg;
         }
 
-        public static Color GetSidebarColor(bool isDarkMode) => isDarkMode ? ColSidebarDark : ColSidebarLight;
-        public static Color GetContentColor(bool isDarkMode) => isDarkMode ? ColContentDark : ColContentLight;
-        public static Color GetCardColor(bool isDarkMode) => isDarkMode ? ColCardDark : ColCardLight;
-        public static Color GetCardHoverColor(bool isDarkMode) => isDarkMode ? ColCardHoverDark : ColCardHoverLight;
-        public static Color GetTextColor(bool isDarkMode) => isDarkMode ? ColTextDark : ColTextLight;
-        public static Color GetSecondaryTextColor(bool isDarkMode) => isDarkMode ? Color.Gray : Color.DimGray;
+        public static Color GetSidebarColor(bool isDarkMode) { return isDarkMode ? ColSidebarDark : ColSidebarLight; }
+        public static Color GetContentColor(bool isDarkMode) { return isDarkMode ? ColContentDark : ColContentLight; }
+        public static Color GetCardColor(bool isDarkMode) { return isDarkMode ? ColCardDark : ColCardLight; }
+        public static Color GetCardHoverColor(bool isDarkMode) { return isDarkMode ? ColCardHoverDark : ColCardHoverLight; }
+        public static Color GetTextColor(bool isDarkMode) { return isDarkMode ? ColTextDark : ColTextLight; }
+        public static Color GetSecondaryTextColor(bool isDarkMode) { return isDarkMode ? Color.Gray : Color.DimGray; }
     }
 }

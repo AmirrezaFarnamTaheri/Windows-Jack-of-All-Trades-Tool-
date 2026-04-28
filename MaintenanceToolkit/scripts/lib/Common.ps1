@@ -4,7 +4,7 @@ function Assert-Admin {
     $currentPrincipal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
     if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]"Administrator")) {
         Write-Host "Error: This script requires Administrator privileges." -ForegroundColor Red
-        if (-not [Console]::IsInputRedirected) { Pause }
+        if ($env:MAINTENANCE_GUI_HOST -ne '1' -and -not [Console]::IsInputRedirected) { Pause }
         Exit 1
     }
 }
@@ -85,10 +85,11 @@ function Get-SystemSummary {
 }
 
 function Pause-If-Interactive {
-    if (-not [Console]::IsInputRedirected) {
-        Write-Host "`nPress any key to continue..." -ForegroundColor DarkGray
-        $null = $host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
-    }
+    # Maintenance GUI captures stdout; there is no keyboard for ReadKey — skip or the host waits forever.
+    if ($env:MAINTENANCE_GUI_HOST -eq '1') { return }
+    if ([Console]::IsInputRedirected) { return }
+    Write-Host "`nPress any key to continue..." -ForegroundColor DarkGray
+    $null = $host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
 }
 
 function Test-IsConnected {

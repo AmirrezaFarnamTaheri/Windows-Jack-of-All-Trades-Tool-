@@ -17,10 +17,12 @@ namespace SystemMaintenance.Core
         private int _scriptRunning = 0;
         private bool _disposed = false;
 
-        public bool IsScriptRunning => _scriptRunning == 1;
+        public bool IsScriptRunning { get { return _scriptRunning == 1; } }
 
         public event Action<string> OnOutput;
         public event Action<string> OnError;
+
+        public event Action<int, TimeSpan> OnCompleted;
 
         public ScriptExecutor()
         {
@@ -28,7 +30,7 @@ namespace SystemMaintenance.Core
 
         public async Task RunScriptAsync(ScriptInfo script, bool verbose, CancellationToken ct)
         {
-            if (_disposed) throw new ObjectDisposedException(nameof(ScriptExecutor));
+            if (_disposed) throw new ObjectDisposedException("ScriptExecutor");
             if (Interlocked.CompareExchange(ref _scriptRunning, 1, 0) != 0)
                 throw new InvalidOperationException("Script already running.");
 
@@ -47,9 +49,13 @@ namespace SystemMaintenance.Core
             string path = FindScriptPath(script.FileName);
 
             if (path == null) {
-                OnError?.Invoke("Script file not found: " + script.FileName);
+                var err = OnError;
+                if (err != null) err("Script file not found: " + script.FileName);
                 return;
             }
+
+            DateTime start = DateTime.UtcNow;
+            int exitCode = -1;
 
             try {
                 string args;
@@ -73,6 +79,10 @@ namespace SystemMaintenance.Core
                 if (ConfigManager.IsSafeMode) psi.EnvironmentVariables["MAINTENANCE_SAFE_MODE"] = "1";
                 else if (psi.EnvironmentVariables.ContainsKey("MAINTENANCE_SAFE_MODE")) psi.EnvironmentVariables.Remove("MAINTENANCE_SAFE_MODE");
 
+                // Captured-output runs have no console for ReadKey / Pause; scripts must skip blocking prompts (see Common.ps1).
+                if (!script.IsInteractive) psi.EnvironmentVariables["MAINTENANCE_GUI_HOST"] = "1";
+                else if (psi.EnvironmentVariables.ContainsKey("MAINTENANCE_GUI_HOST")) psi.EnvironmentVariables.Remove("MAINTENANCE_GUI_HOST");
+
                 if (script.IsInteractive)
                 {
                     psi.UseShellExecute = false;
@@ -83,6 +93,7 @@ namespace SystemMaintenance.Core
                          lock(_processLock) _currentProcess = p;
                          p.Start();
                          p.WaitForExit();
+                         try { exitCode = p.ExitCode; } catch {}
                          lock(_processLock) _currentProcess = null;
                     }
                 }
@@ -99,8 +110,8 @@ namespace SystemMaintenance.Core
                     {
                         lock(_processLock) _currentProcess = p;
 
-                        p.OutputDataReceived += (s,e) => { if (e.Data!=null) OnOutput?.Invoke(e.Data); };
-                        p.ErrorDataReceived += (s,e) => { if (e.Data!=null) OnError?.Invoke("ERR: "+e.Data); };
+                        p.OutputDataReceived += (s,e) => { if (e.Data!=null) { var outH = OnOutput; if (outH != null) outH(e.Data); } };
+                        p.ErrorDataReceived += (s,e) => { if (e.Data!=null) { var errH = OnError; if (errH != null) errH("ERR: " + e.Data); } };
 
                         p.Start();
                         p.BeginOutputReadLine();
@@ -109,7 +120,8 @@ namespace SystemMaintenance.Core
                         while (!p.HasExited) {
                             if (ct.IsCancellationRequested || _disposed) {
                                 try { p.Kill(); } catch {}
-                                OnOutput?.Invoke("Process cancelled.");
+                                var outH = OnOutput;
+                                if (outH != null) outH("Process cancelled.");
                                 break;
                             }
                             Thread.Sleep(100);
@@ -117,11 +129,24 @@ namespace SystemMaintenance.Core
 
                         if (!ct.IsCancellationRequested && !_disposed) p.WaitForExit();
 
+                        try { exitCode = p.ExitCode; } catch {}
+
                         lock(_processLock) _currentProcess = null;
                     }
                 }
             } catch (Exception ex) {
-                OnError?.Invoke("Error launching process: " + ex.Message);
+                var err = OnError;
+                if (err != null) err("Error launching process: " + ex.Message);
+            } finally {
+                try
+                {
+                    TimeSpan dur = DateTime.UtcNow - start;
+                    var complete = OnCompleted;
+                    if (complete != null) complete(exitCode, dur);
+                }
+                catch
+                {
+                }
             }
         }
 
@@ -139,7 +164,7 @@ namespace SystemMaintenance.Core
             string baseDir = AppDomain.CurrentDomain.BaseDirectory;
 
             // Normalize path separator just in case
-            fileName = fileName.TrimStart('\', '/');
+            fileName = fileName.TrimStart('\\', '/');
 
             // Search paths: prioritized order
             string[] potentialPaths = new string[] {
@@ -226,7 +251,8 @@ namespace SystemMaintenance.Core
                     }
                 }
             } catch (Exception ex) {
-                OnError?.Invoke("Failed to extract embedded scripts: " + ex.Message);
+                var err = OnError;
+                if (err != null) err("Failed to extract embedded scripts: " + ex.Message);
             }
         }
 

@@ -9,7 +9,7 @@ Write-Log "If your PC crashes or shuts down, you likely have an overheating or P
 Write-Log "Press CTRL+C at any time to STOP the test." "White"
 
 Write-Host "`nPress any key to START the stress test..." -ForegroundColor Green
-if (-not [Console]::IsInputRedirected) { $null = $host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown") }
+if ($env:MAINTENANCE_GUI_HOST -ne '1' -and -not [Console]::IsInputRedirected) { $null = $host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown") }
 
 try {
     $start = Get-Date

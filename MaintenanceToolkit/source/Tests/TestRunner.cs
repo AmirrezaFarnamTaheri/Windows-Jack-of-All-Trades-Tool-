@@ -28,9 +28,13 @@ namespace SystemMaintenance.Tests
 
         static void TestConfigManager_Load()
         {
-            // Setup dummy file
-            File.WriteAllText("settings.cfg", "DarkMode=True\nSafeMode=False");
+            // Setup dummy file in per-user app data folder (matches production behavior)
+            string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MaintenanceToolkit");
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(Path.Combine(dir, "settings.cfg"), "DarkMode=True\nSafeMode=False");
+
             ConfigManager.Load();
+
             if (!ConfigManager.IsDarkMode) throw new Exception("DarkMode should be true");
             if (ConfigManager.IsSafeMode) throw new Exception("SafeMode should be false");
         }

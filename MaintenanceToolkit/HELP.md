@@ -19,6 +19,12 @@ The **Dashboard** provides an at-a-glance view of your system:
 *   **Status Indicators:** Alerts you to "Pending Reboot" states.
 *   **Quick Actions:** One-click access to common maintenance tasks.
 
+### Diagnostics Center
+The **Diagnostics** tab runs a safe, read-only bundle and generates a consolidated HTML report.
+*   **Where it saves:** A `DiagnosticsCenter_*.html` report is saved to your Desktop.
+*   **What it includes (non-destructive):** OS details, uptime, internet/winget context, pending reboot flags, disk free-space snapshot (with low-space findings), Security Center AV list, Microsoft Defender status (if available), BitLocker volume status, firewall profile status, key Windows services, recent minidump count, System and Application event samples, and a guided **Findings** summary.
+*   **When to use:** Before doing repairs, when troubleshooting “what’s wrong?”, or when gathering evidence for root-cause analysis.
+
 ### Running Scripts
 1.  Navigate to a category using the sidebar.
 2.  **Single Run:** Double-click a card or click the **RUN** button.

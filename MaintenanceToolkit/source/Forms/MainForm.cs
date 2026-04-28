@@ -8,6 +8,7 @@ using System.Security.Principal;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using System.Reflection;
 using SystemMaintenance.Core;
 using SystemMaintenance.Models;
 using SystemMaintenance.Controls;
@@ -29,13 +30,14 @@ namespace SystemMaintenance.Forms
         private ToolStripStatusLabel statusLabel;
         private ToolStripProgressBar progressBar;
         private TextBox txtSearch;
+        private TableLayoutPanel contentHeader;
         private SplitContainer splitContainer;
         private Button btnCancel;
         private Button btnDarkMode;
         private Button btnSafeMode;
 
         // Caches
-        private Dictionary<string, Panel> scriptCardCache = new Dictionary<string, Panel>();
+        private Dictionary<string, ScriptCard> scriptCardCache = new Dictionary<string, ScriptCard>();
         private Panel dashboardPanel;
         private Panel helpPanel;
         private ReportViewerControl reportPanel;
@@ -54,6 +56,9 @@ namespace SystemMaintenance.Forms
         private ScriptExecutor scriptExecutor;
         private CancellationTokenSource batchCts;
         private bool isBatchMode = false;
+        private bool _splitDistanceInitialized = false;
+        private int _lastExitCode = -1;
+        private int _lastDurationSeconds = 0;
 
         // Batch Mode Controls
         private CheckBox chkBatchMode;
@@ -61,6 +66,7 @@ namespace SystemMaintenance.Forms
         private Button btnRunBatch;
         private Button btnSelectAll;
         private Button btnSelectNone;
+        private ComboBox cmbBatchPreset;
 
         public MainForm()
         {
@@ -71,10 +77,15 @@ namespace SystemMaintenance.Forms
             // Subscribe to Logger
             scriptExecutor.OnOutput += (msg) => Log(msg);
             scriptExecutor.OnError += (msg) => Log(msg, "ERROR");
+            scriptExecutor.OnCompleted += (code, dur) => {
+                _lastExitCode = code;
+                _lastDurationSeconds = (int)dur.TotalSeconds;
+                Log(string.Format("ExitCode={0} Duration={1}s", code, _lastDurationSeconds), code == 0 ? "SUCCESS" : "WARN");
+            };
             Logger.OnLogMessage += (msg, type) => Log(msg, type);
 
             // --- UI Setup ---
-            this.Text = "Ultimate System Maintenance Toolkit";
+            this.Text = string.Format("{0} (Toolkit v{1} | GUI v{2})", AppInfo.Name, AppInfo.ToolkitVersion, AppInfo.GuiVersion);
             this.Size = new Size(1100, 750);
             this.MinimumSize = new Size(900, 600);
             this.StartPosition = FormStartPosition.CenterScreen;
@@ -94,6 +105,64 @@ namespace SystemMaintenance.Forms
 
             this.FormClosing += OnFormClosing;
             this.KeyDown += OnKeyDown;
+            this.Shown += MainForm_Shown;
+        }
+
+        private void MainForm_Shown(object sender, EventArgs e)
+        {
+            if (_splitDistanceInitialized || splitContainer == null) return;
+            _splitDistanceInitialized = true;
+            try
+            {
+                if (contentHeader != null)
+                {
+                    if (ConfigManager.UiToolbarHeight >= 40 && ConfigManager.UiToolbarHeight <= 220)
+                        contentHeader.Height = ConfigManager.UiToolbarHeight;
+                }
+
+                int h = splitContainer.Height;
+                if (h >= 200)
+                {
+                    int maxD = h - splitContainer.Panel2MinSize - splitContainer.SplitterWidth;
+                    int d;
+                    if (ConfigManager.UiSplitRatioPermille >= 0)
+                    {
+                        int span = h - splitContainer.SplitterWidth;
+                        if (span < 1) span = 1;
+                        d = (int)((long)span * (long)ConfigManager.UiSplitRatioPermille / 1000L);
+                    }
+                    else
+                    {
+                        d = (int)(h * 0.58);
+                    }
+                    if (d < splitContainer.Panel1MinSize) d = splitContainer.Panel1MinSize;
+                    if (d > maxD) d = maxD;
+                    splitContainer.SplitterDistance = d;
+                }
+                UpdateConfigUiFromLayout();
+            }
+            catch
+            {
+            }
+        }
+
+        /// <summary>Keep layout ratios in config so any Save (theme, safe mode, favorites) does not drop UI state.</summary>
+        private void UpdateConfigUiFromLayout()
+        {
+            if (splitContainer == null) return;
+            int total = splitContainer.Height - splitContainer.SplitterWidth;
+            if (total > 0)
+            {
+                int p = (int)(1000L * splitContainer.SplitterDistance / total);
+                if (p < 0) p = 0;
+                else if (p > 1000) p = 1000;
+                ConfigManager.UiSplitRatioPermille = p;
+            }
+            if (contentHeader != null)
+            {
+                int th = contentHeader.Height;
+                if (th >= 40 && th <= 220) ConfigManager.UiToolbarHeight = th;
+            }
         }
 
         private void OnKeyDown(object sender, KeyEventArgs e)
@@ -107,10 +176,6 @@ namespace SystemMaintenance.Forms
 
         private void OnFormClosing(object sender, FormClosingEventArgs e)
         {
-            foreach (var card in scriptCardCache.Values) card.Dispose();
-            scriptCardCache.Clear();
-
-            // Warn if scripts running
             if (scriptExecutor.IsScriptRunning)
             {
                 if (MessageBox.Show("A script is currently running. Close anyway?", "Warning", MessageBoxButtons.YesNo) == DialogResult.No)
@@ -121,7 +186,18 @@ namespace SystemMaintenance.Forms
                 scriptExecutor.Cancel();
             }
 
+            foreach (var card in scriptCardCache.Values) card.Dispose();
+            scriptCardCache.Clear();
             scriptExecutor.Dispose();
+
+            try
+            {
+                UpdateConfigUiFromLayout();
+                ConfigManager.Save();
+            }
+            catch
+            {
+            }
         }
 
         private void InitializeLayout()
@@ -150,6 +226,7 @@ namespace SystemMaintenance.Forms
 
             var cats = new Dictionary<string, string> {
                 {"DASHBOARD", "🏠 Dashboard"},
+                {"DIAGNOSTICS", "🩺 Diagnostics"},
                 {"FAVORITES", "★ Favorites"},
                 {"CLEAN", "🧹 Clean"},
                 {"REPAIR", "🔧 Repair"},
@@ -203,60 +280,107 @@ namespace SystemMaintenance.Forms
             contentPanel = new Panel { Dock = DockStyle.Fill };
             mainLayout.Controls.Add(contentPanel, 1, 0);
 
-            // Content Header
-            Panel contentHeader = new Panel { Dock = DockStyle.Top, Height = 50, Padding = new Padding(5) };
+            // Content Header — table keeps search visible while toolbar wraps
+            contentHeader = new TableLayoutPanel {
+                Dock = DockStyle.Top,
+                ColumnCount = 2,
+                RowCount = 1,
+                Padding = new Padding(6, 4, 6, 4),
+                AutoSize = false
+            };
+            contentHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            contentHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 256F));
+            contentHeader.RowStyles.Add(new RowStyle(SizeType.AutoSize, 48F));
 
             // Search
-            Panel searchPanel = new Panel { Dock = DockStyle.Right, Width = 250, Padding = new Padding(5) };
-            Panel txtSearchContainer = new Panel { Dock = DockStyle.Fill, BackColor = Color.White, BorderStyle = BorderStyle.FixedSingle };
+            Panel searchPanel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(2, 4, 0, 4) };
+            Panel txtSearchContainer = new Panel { Dock = DockStyle.Fill, BackColor = Color.White, BorderStyle = BorderStyle.FixedSingle, MinimumSize = new Size(120, 24) };
 
-            txtSearch = new TextBox { Dock = DockStyle.Left, Width = 180, Font = new Font("Segoe UI", 10F), BorderStyle = BorderStyle.None, Location = new Point(2,2) };
+            txtSearch = new TextBox { Dock = DockStyle.Left, Width = 180, Font = new Font("Segoe UI", 10F), BorderStyle = BorderStyle.None, Location = new Point(2, 2) };
             txtSearch.TextChanged += TxtSearch_TextChanged;
 
             Button btnClearSearch = new Button { Text = "X", Dock = DockStyle.Right, Width = 25, FlatStyle = FlatStyle.Flat, ForeColor = Color.Gray, Cursor = Cursors.Hand, BackColor = Color.White };
             btnClearSearch.FlatAppearance.BorderSize = 0;
-            btnClearSearch.Click += (s,e) => { txtSearch.Text = ""; };
+            btnClearSearch.Click += (s, e) => { txtSearch.Text = ""; };
 
             txtSearchContainer.Controls.Add(txtSearch);
             txtSearchContainer.Controls.Add(btnClearSearch);
             txtSearch.Width = txtSearchContainer.Width - btnClearSearch.Width - 5;
-            txtSearchContainer.Resize += (s,e) => txtSearch.Width = txtSearchContainer.Width - btnClearSearch.Width - 5;
+            txtSearchContainer.Resize += (s, e) => txtSearch.Width = Math.Max(40, txtSearchContainer.Width - btnClearSearch.Width - 5);
 
-            Label lblSearch = new Label { Text = "Search:", Dock = DockStyle.Left, AutoSize = true, TextAlign = ContentAlignment.MiddleRight, Padding = new Padding(0,5,5,0) };
+            Label lblSearch = new Label { Text = "Search:", Dock = DockStyle.Left, AutoSize = true, TextAlign = ContentAlignment.MiddleRight, Padding = new Padding(0, 6, 6, 0) };
 
             searchPanel.Controls.Add(txtSearchContainer);
             searchPanel.Controls.Add(lblSearch);
 
-            chkBatchMode = new CheckBox { Text = "Batch Mode", Dock = DockStyle.Left, Width = 100, Appearance = Appearance.Button, TextAlign = ContentAlignment.MiddleCenter, FlatStyle = FlatStyle.Flat };
+            FlowLayoutPanel toolbarFlow = new FlowLayoutPanel {
+                Dock = DockStyle.Fill,
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = true,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                Padding = new Padding(0, 2, 6, 2)
+            };
+
+            chkBatchMode = new CheckBox { Text = "Batch mode", Width = 100, Height = 28, Appearance = Appearance.Button, TextAlign = ContentAlignment.MiddleCenter, FlatStyle = FlatStyle.Flat, Margin = new Padding(0, 0, 4, 4) };
             chkBatchMode.CheckedChanged += ChkBatchMode_CheckedChanged;
 
-            chkVerbose = new CheckBox { Text = "Verbose", Dock = DockStyle.Left, Width = 80, Appearance = Appearance.Button, TextAlign = ContentAlignment.MiddleCenter, FlatStyle = FlatStyle.Flat };
-            chkVerbose.CheckedChanged += (s,e) => {
+            chkVerbose = new CheckBox { Text = "Verbose", Width = 76, Height = 28, Appearance = Appearance.Button, TextAlign = ContentAlignment.MiddleCenter, FlatStyle = FlatStyle.Flat, Margin = new Padding(0, 0, 4, 4) };
+            chkVerbose.CheckedChanged += (s, e) => {
                 chkVerbose.BackColor = chkVerbose.Checked ? ThemeManager.ColAccent : Color.Transparent;
                 chkVerbose.ForeColor = chkVerbose.Checked ? Color.White : ThemeManager.GetTextColor(ConfigManager.IsDarkMode);
             };
 
-            btnSelectAll = new Button { Text = "All", Dock = DockStyle.Left, Width = 50, FlatStyle = FlatStyle.Flat, Visible = false };
+            btnSelectAll = new Button { Text = "All", Width = 50, Height = 28, FlatStyle = FlatStyle.Flat, Visible = false, Margin = new Padding(0, 0, 2, 4) };
             btnSelectAll.Click += (s, e) => SetAllBatchSelection(true);
-            btnSelectNone = new Button { Text = "None", Dock = DockStyle.Left, Width = 50, FlatStyle = FlatStyle.Flat, Visible = false };
+            btnSelectNone = new Button { Text = "None", Width = 50, Height = 28, FlatStyle = FlatStyle.Flat, Visible = false, Margin = new Padding(0, 0, 4, 4) };
             btnSelectNone.Click += (s, e) => SetAllBatchSelection(false);
-            btnRunBatch = new Button { Text = "RUN BATCH", Dock = DockStyle.Left, Width = 120, BackColor = ThemeManager.ColAccent, ForeColor = Color.White, FlatStyle = FlatStyle.Flat, Visible = false, Font = new Font("Segoe UI", 9F, FontStyle.Bold) };
+            btnRunBatch = new Button { Text = "RUN BATCH", Width = 120, Height = 28, BackColor = ThemeManager.ColAccent, ForeColor = Color.White, FlatStyle = FlatStyle.Flat, Visible = false, Font = new Font("Segoe UI", 9F, FontStyle.Bold), Margin = new Padding(0, 0, 0, 4) };
             btnRunBatch.Click += BtnRunBatch_Click;
 
-            contentHeader.Controls.Add(searchPanel);
-            contentHeader.Controls.Add(btnRunBatch);
-            contentHeader.Controls.Add(btnSelectNone);
-            contentHeader.Controls.Add(btnSelectAll);
-            contentHeader.Controls.Add(chkVerbose);
-            contentHeader.Controls.Add(chkBatchMode);
+            cmbBatchPreset = new ComboBox { Width = 160, DropDownStyle = ComboBoxStyle.DropDownList, Visible = false, Margin = new Padding(0, 0, 4, 4) };
+            cmbBatchPreset.Items.AddRange(new object[] { "Preset: (none)", "Weekly Maintenance", "Troubleshoot Slowness", "Network Issues", "Windows Update Fix" });
+            cmbBatchPreset.SelectedIndex = 0;
+            cmbBatchPreset.SelectedIndexChanged += (s, e) => ApplyBatchPreset(cmbBatchPreset.SelectedItem as string);
+
+            toolbarFlow.Controls.Add(chkBatchMode);
+            toolbarFlow.Controls.Add(chkVerbose);
+            toolbarFlow.Controls.Add(cmbBatchPreset);
+            toolbarFlow.Controls.Add(btnSelectAll);
+            toolbarFlow.Controls.Add(btnSelectNone);
+            toolbarFlow.Controls.Add(btnRunBatch);
+
+            contentHeader.Controls.Add(toolbarFlow, 0, 0);
+            contentHeader.Controls.Add(searchPanel, 1, 0);
+            toolbarFlow.SizeChanged += (s, e) => {
+                int h = Math.Max(50, toolbarFlow.Height + contentHeader.Padding.Top + contentHeader.Padding.Bottom + 6);
+                if (contentHeader.Height != h) contentHeader.Height = h;
+                UpdateConfigUiFromLayout();
+            };
 
             contentPanel.Controls.Add(contentHeader);
+            contentHeader.Height = 58;
 
             // Split Container
-            splitContainer = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, SplitterDistance = 450 };
+            splitContainer = new SplitContainer {
+                Dock = DockStyle.Fill,
+                Orientation = Orientation.Horizontal,
+                SplitterDistance = 450,
+                Panel1MinSize = 100,
+                Panel2MinSize = 64,
+                SplitterWidth = 6
+            };
 
-            scriptsPanel = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoScroll = true, Padding = new Padding(10) };
+            scriptsPanel = new FlowLayoutPanel {
+                Dock = DockStyle.Fill,
+                AutoScroll = true,
+                Padding = new Padding(12, 10, 12, 10),
+                FlowDirection = FlowDirection.TopDown,
+                WrapContents = false
+            };
             scriptsPanel.Resize += ScriptsPanel_Resize;
+            splitContainer.Resize += (s, e) => UpdateContentAreaWidths();
+            splitContainer.SplitterMoved += (s, e) => UpdateConfigUiFromLayout();
             splitContainer.Panel1.Controls.Add(scriptsPanel);
 
             // Logs
@@ -299,16 +423,88 @@ namespace SystemMaintenance.Forms
 
         private void ScriptsPanel_Resize(object sender, EventArgs e)
         {
-            if (scriptsPanel.Controls.Count > 0 && scriptsPanel.Width > 40)
+            UpdateContentAreaWidths();
+        }
+
+        /// <summary>Applies the scroll viewport width/height to dashboard, help, reports, and all nested script cards (including quick actions).</summary>
+        private void UpdateContentAreaWidths()
+        {
+            if (scriptsPanel == null) return;
+            if (scriptsPanel.ClientSize.Width < 24) return;
+            int innerW = scriptsPanel.ClientSize.Width - scriptsPanel.Padding.Left - scriptsPanel.Padding.Right;
+            if (innerW < 200) innerW = 200;
+            int viewH = scriptsPanel.ClientSize.Height;
+            if (viewH < 80) viewH = 80;
+
+            foreach(Control c in scriptsPanel.Controls)
             {
-                foreach(Control c in scriptsPanel.Controls)
+                if (dashboardPanel != null && c == dashboardPanel)
                 {
-                    // Adjust widgets and full width panels
-                    if (c is DashboardWidget || c == dashboardPanel || c == helpPanel || c == reportPanel)
+                    dashboardPanel.Width = innerW;
+                    foreach(Control ch in dashboardPanel.Controls)
                     {
-                        c.Width = scriptsPanel.Width - 40;
+                        if (ch is FlowLayoutPanel)
+                        {
+                            ch.Width = innerW;
+                            int innerPad = ch.Padding.Left + ch.Padding.Right;
+                            foreach(Control w in ch.Controls)
+                            {
+                                w.Width = Math.Max(200, ch.ClientSize.Width - innerPad);
+                            }
+                        }
+                        else if (ch.Tag is string)
+                        {
+                            if ((string)ch.Tag == "DASHBOARD_REFRESH")
+                                ch.Left = Math.Max(0, innerW - ch.Width - 8);
+                        }
                     }
                 }
+                else if (helpPanel != null && c == helpPanel)
+                {
+                    helpPanel.Width = innerW;
+                    int hh = Math.Max(200, viewH);
+                    helpPanel.Height = hh;
+                }
+                else if (reportPanel != null && c == reportPanel)
+                {
+                    c.Width = innerW;
+                    c.Height = Math.Max(220, viewH);
+                }
+                else if (c is Panel && c.Tag is string && (string)c.Tag == "DIAG_ROOT")
+                {
+                    c.Width = innerW;
+                }
+            }
+
+            ApplyScriptCardWidthsRecursive(scriptsPanel);
+        }
+
+        private void ApplyScriptCardWidthsRecursive(Control parent)
+        {
+            if (parent == null) return;
+            int padH = parent.Padding.Left + parent.Padding.Right;
+            foreach(Control c in parent.Controls)
+            {
+                ScriptCard sc = c as ScriptCard;
+                if (sc != null)
+                {
+                    int w = parent.ClientSize.Width - padH;
+                    if (w < 200) w = 200;
+                    sc.SetCardWidth(w);
+                }
+                else
+                    ApplyScriptCardWidthsRecursive(c);
+            }
+        }
+
+        private void ForEachScriptCard(Control parent, Action<ScriptCard> act)
+        {
+            if (parent == null || act == null) return;
+            foreach(Control c in parent.Controls)
+            {
+                ScriptCard sc = c as ScriptCard;
+                if (sc != null) act(sc);
+                else if (c.Controls != null && c.Controls.Count > 0) ForEachScriptCard(c, act);
             }
         }
 
@@ -337,11 +533,11 @@ namespace SystemMaintenance.Forms
             if (btn != null) LoadCategory(btn.Tag.ToString());
         }
 
-        private Panel GetOrAddCard(ScriptInfo s) {
+        private ScriptCard GetOrAddCard(ScriptInfo s) {
             if (!scriptCardCache.ContainsKey(s.FileName)) {
                 scriptCardCache[s.FileName] = new ScriptCard(s);
                 // Wire up event if needed
-                var card = (ScriptCard)scriptCardCache[s.FileName];
+                var card = scriptCardCache[s.FileName];
                 card.OnRunClick += (src, script) => RunScript(script);
                 card.OnFavoriteClick += (src, script) => {
                     ConfigManager.ToggleFavorite(script.FileName);
@@ -350,9 +546,12 @@ namespace SystemMaintenance.Forms
                 card.OnScheduleClick += (src, script) => {
                     new SchedulerForm(script).ShowDialog();
                 };
+                card.OnHelpClick += (src, script) => {
+                    MessageBox.Show(BuildTroubleshootGuide(script), "Troubleshoot: " + script.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                };
             }
             // Ensure batch visibility state
-            ((ScriptCard)scriptCardCache[s.FileName]).SetBatchMode(isBatchMode);
+            scriptCardCache[s.FileName].SetBatchMode(isBatchMode);
             return scriptCardCache[s.FileName];
         }
 
@@ -381,6 +580,7 @@ namespace SystemMaintenance.Forms
                 }
 
                 if (category == "DASHBOARD") RenderDashboard();
+                else if (category == "DIAGNOSTICS") RenderDiagnostics();
                 else if (category == "HELP") RenderHelp();
                 else if (category == "REPORTS") RenderReports();
                 else
@@ -406,6 +606,74 @@ namespace SystemMaintenance.Forms
                 scriptsPanel.AutoSize = wasAutoSize;
                 scriptsPanel.ResumeLayout(true);
                 this.ResumeLayout(true);
+                UpdateContentAreaWidths();
+            }
+        }
+
+        private void RenderDiagnostics()
+        {
+            int innerW = Math.Max(240, scriptsPanel.ClientSize.Width - scriptsPanel.Padding.Left - scriptsPanel.Padding.Right);
+            Panel panel = new Panel { Tag = "DIAG_ROOT", Width = innerW, Padding = new Padding(20, 16, 20, 16) };
+            panel.BackColor = ThemeManager.GetContentColor(ConfigManager.IsDarkMode);
+
+            Label header = new Label {
+                Text = "Diagnostics Center",
+                Font = new Font("Segoe UI", 16F, FontStyle.Regular),
+                AutoSize = true,
+                ForeColor = ThemeManager.GetTextColor(ConfigManager.IsDarkMode),
+                Location = new Point(0, 0)
+            };
+
+            Label desc = new Label {
+                Text = "Run a safe read-only diagnostics bundle and generate a consolidated HTML report.",
+                Font = new Font("Segoe UI", 10F, FontStyle.Regular),
+                AutoSize = true,
+                ForeColor = ThemeManager.GetSecondaryTextColor(ConfigManager.IsDarkMode),
+                Location = new Point(0, 40)
+            };
+
+            Button btnRun = new Button {
+                Text = "RUN DIAGNOSTICS",
+                Width = 180,
+                Height = 36,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = ThemeManager.ColAccent,
+                ForeColor = Color.White,
+                Cursor = Cursors.Hand
+            };
+            btnRun.FlatAppearance.BorderSize = 0;
+            btnRun.Click += (s, e) => {
+                // Reuse script engine so output/logging/evidence remain consistent
+                RunScript(new ScriptInfo("85_DiagnosticsCenter.ps1", "Diagnostics Center", "Safe read-only diagnostics and report generation."));
+            };
+
+            panel.Controls.Add(header);
+            panel.Controls.Add(desc);
+            panel.Controls.Add(btnRun);
+
+            Action layoutDiag = () => {
+                int w = Math.Max(80, panel.ClientSize.Width - panel.Padding.Left - panel.Padding.Right);
+                desc.MaximumSize = new Size(w, 0);
+                desc.Location = new Point(0, header.Bottom + 8);
+                header.PerformLayout();
+                desc.PerformLayout();
+                btnRun.Location = new Point(0, desc.Bottom + 14);
+                int needH = btnRun.Bottom + panel.Padding.Top + panel.Padding.Bottom + 8;
+                if (panel.Height < needH) panel.Height = needH;
+            };
+            panel.Resize += (s, e) => { layoutDiag(); };
+            layoutDiag();
+
+            scriptsPanel.Controls.Add(panel);
+
+            // Also show the underlying script card for transparency if desired
+            try
+            {
+                ScriptInfo s = new ScriptInfo("85_DiagnosticsCenter.ps1", "Diagnostics Center (Script)", "Underlying script that generates the diagnostics HTML report.");
+                scriptsPanel.Controls.Add(GetOrAddCard(s));
+            }
+            catch
+            {
             }
         }
 
@@ -423,8 +691,9 @@ namespace SystemMaintenance.Forms
                 Label lblHeader = new Label { Text = "System Dashboard", Font = new Font("Segoe UI", 20F, FontStyle.Regular), AutoSize = true, Location = new Point(0, 0), ForeColor = ThemeManager.GetTextColor(ConfigManager.IsDarkMode), Tag = "THEMEABLE" };
                 dashboardPanel.Controls.Add(lblHeader);
 
-                Button btnRefresh = new Button { Text = "↻ Refresh Stats", Size = new Size(120, 30), Location = new Point(dashboardPanel.Width - 130, 10), FlatStyle = FlatStyle.Flat, BackColor = ThemeManager.ColAccent, ForeColor = Color.White };
+                Button btnRefresh = new Button { Text = "↻ Refresh", Size = new Size(112, 30), Tag = "DASHBOARD_REFRESH", Location = new Point(dashboardPanel.Width - 120, 8), FlatStyle = FlatStyle.Flat, BackColor = ThemeManager.ColAccent, ForeColor = Color.White };
                 btnRefresh.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+                btnRefresh.FlatAppearance.BorderSize = 0;
                 dashboardPanel.Controls.Add(btnRefresh);
 
                 FlowLayoutPanel widgetFlow = new FlowLayoutPanel {
@@ -444,7 +713,15 @@ namespace SystemMaintenance.Forms
 
                 Label lblQuick = new Label { Text = "Quick Maintenance", Font = new Font("Segoe UI", 14F, FontStyle.Regular), AutoSize = true, Location = new Point(0, 200), ForeColor = ThemeManager.GetTextColor(ConfigManager.IsDarkMode), Tag = "THEMEABLE" };
 
-                FlowLayoutPanel quickFlow = new FlowLayoutPanel { Width = dashboardPanel.Width, Height = 180, AutoScroll = false, Tag = "QUICK_FLOW" };
+                FlowLayoutPanel quickFlow = new FlowLayoutPanel {
+                    Width = dashboardPanel.Width,
+                    AutoSize = true,
+                    AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                    AutoScroll = false,
+                    FlowDirection = FlowDirection.TopDown,
+                    WrapContents = false,
+                    Tag = "QUICK_FLOW"
+                };
                 string[] quickScripts = { "70_DetailedSysInfo.ps1", "2_InstallCleaningTools.ps1", "1_CreateRestorePoint.ps1", "9_DiskHealthCheck.ps1" };
                 foreach(var s in quickScripts) {
                     ScriptInfo info = null;
@@ -490,13 +767,6 @@ namespace SystemMaintenance.Forms
                 });
             }
 
-            if (scriptsPanel.Width > 40) {
-                dashboardPanel.Width = scriptsPanel.Width - 40;
-                foreach(Control c in dashboardPanel.Controls) {
-                    if (c is FlowLayoutPanel) c.Width = dashboardPanel.Width;
-                }
-            }
-
             scriptsPanel.Controls.Add(dashboardPanel);
         }
 
@@ -521,46 +791,15 @@ namespace SystemMaintenance.Forms
 
                 if (content == null) content = "# Error\nHelp file not found.";
 
-                string html = "<html><body style='font-family:Segoe UI; padding:20px; color:" + (ConfigManager.IsDarkMode ? "#EEE" : "#222") + "; background-color:" + (ConfigManager.IsDarkMode ? "#222" : "#FFF") + "'>";
-                bool inList = false;
-
-                foreach (var line in content.Split('\n')) {
-                    string l = line.Trim();
-                    string safe = System.Net.WebUtility.HtmlEncode(l);
-
-                    if (l.StartsWith("# ")) {
-                        if (inList) { html += "</ul>"; inList = false; }
-                        html += "<h1>" + System.Net.WebUtility.HtmlEncode(l.Substring(2)) + "</h1>";
-                    }
-                    else if (l.StartsWith("## ")) {
-                        if (inList) { html += "</ul>"; inList = false; }
-                        html += "<h2>" + System.Net.WebUtility.HtmlEncode(l.Substring(3)) + "</h2>";
-                    }
-                    else if (l.StartsWith("### ")) {
-                        if (inList) { html += "</ul>"; inList = false; }
-                        html += "<h3>" + System.Net.WebUtility.HtmlEncode(l.Substring(4)) + "</h3>";
-                    }
-                    else if (l.StartsWith("- ")) {
-                        if (!inList) { html += "<ul>"; inList = true; }
-                        html += "<li>" + System.Net.WebUtility.HtmlEncode(l.Substring(2)) + "</li>";
-                    }
-                    else if (l.Length > 0) {
-                        if (inList) { html += "</ul>"; inList = false; }
-                        html += "<p>" + safe + "</p>";
-                    }
-                }
-
-                if (inList) html += "</ul>";
-                html += "</body></html>";
+                string html = HelpMarkdownRenderer.ToHtml(content, ConfigManager.IsDarkMode);
 
                 WebBrowser web = new WebBrowser { Dock = DockStyle.Fill, MinimumSize = new Size(20,20), Tag = "WEB_HELP" };
                 web.DocumentText = html;
 
-                helpPanel = new Panel { Width = Math.Max(100, scriptsPanel.Width - 40), Height = 600 };
+                helpPanel = new Panel { MinimumSize = new Size(200, 200) };
                 helpPanel.Controls.Add(web);
             }
 
-            if (scriptsPanel.Width > 40) helpPanel.Width = scriptsPanel.Width - 40;
             scriptsPanel.Controls.Add(helpPanel);
         }
 
@@ -570,7 +809,6 @@ namespace SystemMaintenance.Forms
                 reportPanel = new ReportViewerControl();
             }
             reportPanel.RefreshReports();
-            if (scriptsPanel.Width > 40) reportPanel.Width = scriptsPanel.Width - 40;
             scriptsPanel.Controls.Add(reportPanel);
         }
 
@@ -581,10 +819,20 @@ namespace SystemMaintenance.Forms
                 return;
             }
 
+            if (ConfigManager.IsSafeMode && script != null && script.IsDestructive)
+            {
+                MessageBox.Show("Safe Mode is ON. This tool is locked because it is marked destructive.\n\nTurn off Safe Mode to run it.", "Blocked by Safe Mode", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
             statusLabel.Text = "Running " + script.DisplayName + "...";
             progressBar.Visible = true;
             btnCancel.Visible = true;
             txtLog.Clear();
+
+            // Preflight context + evidence folder
+            string evidenceDir = CreateEvidenceFolder(script.FileName);
+            Log(BuildSystemContextBlock(script, evidenceDir), "DIAG");
 
             Task.Run(async () => {
                 try {
@@ -594,6 +842,7 @@ namespace SystemMaintenance.Forms
                         progressBar.Visible = false;
                         btnCancel.Visible = false;
                         Log("Execution Finished.", "SUCCESS");
+                        TrySaveEvidenceBundle(evidenceDir);
                     }));
                 } catch (Exception ex) {
                     if (!IsDisposed) Invoke((Action)(() => {
@@ -601,6 +850,7 @@ namespace SystemMaintenance.Forms
                         progressBar.Visible = false;
                         btnCancel.Visible = false;
                         Log("Error: " + ex.Message, "ERROR");
+                        TrySaveEvidenceBundle(evidenceDir);
                     }));
                 }
             });
@@ -620,7 +870,10 @@ namespace SystemMaintenance.Forms
                     return;
             }
 
-            if (MessageBox.Show($"Are you sure you want to run {selectedCards.Count} scripts?", "Confirm Batch", MessageBoxButtons.YesNo) == DialogResult.No) return;
+            if (MessageBox.Show(
+                string.Format("Are you sure you want to run {0} scripts?", selectedCards.Count),
+                "Confirm Batch",
+                MessageBoxButtons.YesNo) == DialogResult.No) return;
 
             batchCts = new CancellationTokenSource();
             btnRunBatch.Enabled = false;
@@ -632,9 +885,20 @@ namespace SystemMaintenance.Forms
                 foreach (var card in selectedCards) {
                      if (batchCts.Token.IsCancellationRequested) break;
 
+                     if (ConfigManager.IsSafeMode && card.Script != null && card.Script.IsDestructive)
+                     {
+                         if (!IsDisposed) Invoke((Action)(() => {
+                             Log("Safe Mode Blocked: " + card.Script.DisplayName, "WARN");
+                         }));
+                         continue;
+                     }
+
+                     string evidenceDir = CreateEvidenceFolder(card.Script.FileName);
+
                      if (!IsDisposed) Invoke((Action)(() => {
                         statusLabel.Text = "Batch: Running " + card.Script.DisplayName + "...";
                         Log("Batch Starting: " + card.Script.DisplayName, "INFO");
+                        Log(BuildSystemContextBlock(card.Script, evidenceDir), "DIAG");
                         // Scroll to this card? No need.
                      }));
 
@@ -643,6 +907,8 @@ namespace SystemMaintenance.Forms
                      } catch (Exception ex) {
                          Log("Batch Error in " + card.Script.DisplayName + ": " + ex.Message, "ERROR");
                      }
+
+                     if (!IsDisposed) Invoke((Action)(() => TrySaveEvidenceBundle(evidenceDir)));
 
                      await Task.Delay(500); // Breathe
                 }
@@ -666,6 +932,7 @@ namespace SystemMaintenance.Forms
 
         private void ToggleSafeMode(Button btn) {
             ConfigManager.IsSafeMode = !ConfigManager.IsSafeMode;
+            UpdateConfigUiFromLayout();
             ConfigManager.Save();
 
             btn.Text = "🛡 Safe Mode: " + (ConfigManager.IsSafeMode ? "ON" : "OFF");
@@ -680,6 +947,7 @@ namespace SystemMaintenance.Forms
 
         private void ToggleTheme() {
             ConfigManager.IsDarkMode = !ConfigManager.IsDarkMode;
+            UpdateConfigUiFromLayout();
             ConfigManager.Save();
 
             if (dashboardPanel != null) { dashboardPanel.Dispose(); dashboardPanel = null; }
@@ -723,9 +991,7 @@ namespace SystemMaintenance.Forms
             chkVerbose.ForeColor = chkVerbose.Checked ? Color.White : fg;
             chkVerbose.BackColor = chkVerbose.Checked ? ThemeManager.ColAccent : Color.Transparent;
 
-            foreach(var p in scriptCardCache.Values) {
-                if(p is ScriptCard card) card.ApplyTheme();
-            }
+            foreach (var card in scriptCardCache.Values) card.ApplyTheme();
             if (reportPanel != null) reportPanel.ApplyTheme();
         }
 
@@ -760,20 +1026,55 @@ namespace SystemMaintenance.Forms
             btnRunBatch.Visible = isBatchMode;
             btnSelectAll.Visible = isBatchMode;
             btnSelectNone.Visible = isBatchMode;
+            if (cmbBatchPreset != null) cmbBatchPreset.Visible = isBatchMode;
 
             chkBatchMode.BackColor = isBatchMode ? ThemeManager.ColAccent : Color.Transparent;
             chkBatchMode.ForeColor = isBatchMode ? Color.White : ThemeManager.GetTextColor(ConfigManager.IsDarkMode);
 
-            foreach(var p in scriptCardCache.Values) {
-                if(p is ScriptCard card) card.SetBatchMode(isBatchMode);
+            foreach (var card in scriptCardCache.Values) card.SetBatchMode(isBatchMode);
+        }
+
+        private void ApplyBatchPreset(string presetName)
+        {
+            if (string.IsNullOrEmpty(presetName)) return;
+            if (!isBatchMode) return;
+
+            // Reset selection first
+            SetAllBatchSelection(false);
+
+            // Map preset -> script file names
+            string[] files = null;
+
+            if (presetName == "Weekly Maintenance")
+                files = new string[] { "4_DeepCleanDisk.ps1", "75_ClearBrowserCache.ps1", "6_OptimizeAndUpdate.ps1", "74_WindowsUpdateHistory.ps1" };
+            else if (presetName == "Troubleshoot Slowness")
+                files = new string[] { "23_FindLargeFiles.ps1", "27_CheckStability.ps1", "76_SystemStabilityScore.ps1", "70_DetailedSysInfo.ps1" };
+            else if (presetName == "Network Issues")
+                files = new string[] { "80_FlushDNSCache.ps1", "7_NetworkReset.ps1", "69_WlanReport.ps1", "20_DnsBenchmark.ps1" };
+            else if (presetName == "Windows Update Fix")
+                files = new string[] { "74_WindowsUpdateHistory.ps1", "16_ResetWindowsUpdate.ps1", "36_ClearPendingUpdates.ps1" };
+            else
+                return;
+
+            // Select matching cards currently loaded, and also in cache if not visible in current category
+            foreach (var card in scriptCardCache.Values)
+            {
+                try
+                {
+                    if (files.Contains(card.Script.FileName)) card.SetBatchSelection(true);
+                }
+                catch { }
             }
+
+            // If user isn't on a script category, show a hint in log
+            Log("Applied batch preset: " + presetName, "INFO");
         }
 
         private void SetAllBatchSelection(bool select)
         {
-             foreach(Control c in scriptsPanel.Controls) {
-                 if (c is ScriptCard card && c.Visible) card.SetBatchSelection(select);
-             }
+            ForEachScriptCard(scriptsPanel, (card) => {
+                if (card.Visible) card.SetBatchSelection(select);
+            });
         }
 
         private void TxtSearch_TextChanged(object sender, EventArgs e)
@@ -781,14 +1082,12 @@ namespace SystemMaintenance.Forms
             string term = txtSearch.Text.Trim().ToLower();
 
             scriptsPanel.SuspendLayout();
-            foreach(Control c in scriptsPanel.Controls) {
-                if (c is ScriptCard card) {
-                    bool match = string.IsNullOrEmpty(term) ||
-                                 card.Script.DisplayName.ToLower().Contains(term) ||
-                                 card.Script.Description.ToLower().Contains(term);
-                    c.Visible = match;
-                }
-            }
+            ForEachScriptCard(scriptsPanel, (card) => {
+                bool match = string.IsNullOrEmpty(term) ||
+                             card.Script.DisplayName.ToLower().Contains(term) ||
+                             card.Script.Description.ToLower().Contains(term);
+                card.Visible = match;
+            });
             scriptsPanel.ResumeLayout();
         }
 
@@ -807,6 +1106,105 @@ namespace SystemMaintenance.Forms
                     try { File.WriteAllText(sfd.FileName, txtLog.Text); } catch(Exception ex) { MessageBox.Show("Error: "+ex.Message); }
                 }
             }
+        }
+
+        private string CreateEvidenceFolder(string scriptFileName)
+        {
+            try
+            {
+                string baseDir = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "MaintenanceToolkit",
+                    "Evidence");
+
+                string safeName = (scriptFileName ?? "UnknownScript").Replace(".ps1", "");
+                foreach (char c in Path.GetInvalidFileNameChars()) safeName = safeName.Replace(c.ToString(), "_");
+
+                string folder = Path.Combine(baseDir, DateTime.Now.ToString("yyyyMMdd_HHmmss") + "_" + safeName);
+                Directory.CreateDirectory(folder);
+                return folder;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private void TrySaveEvidenceBundle(string evidenceDir)
+        {
+            if (string.IsNullOrEmpty(evidenceDir)) return;
+            try
+            {
+                // Save log snapshot
+                File.WriteAllText(Path.Combine(evidenceDir, "run.log.txt"), txtLog.Text);
+
+                // Save quick metadata snapshot
+                string meta = string.Join("\r\n", new string[] {
+                    "ToolkitVersion=" + AppInfo.ToolkitVersion,
+                    "GuiVersion=" + AppInfo.GuiVersion,
+                    "ExitCode=" + _lastExitCode,
+                    "DurationSeconds=" + _lastDurationSeconds,
+                    "SavedAt=" + DateTime.Now.ToString("s")
+                });
+                File.WriteAllText(Path.Combine(evidenceDir, "run.meta.txt"), meta);
+            }
+            catch
+            {
+                // Best-effort: evidence saving should never break the app
+            }
+        }
+
+        private string BuildSystemContextBlock(ScriptInfo script, string evidenceDir)
+        {
+            string admin = IsAdministrator() ? "Yes" : "No";
+            string safe = ConfigManager.IsSafeMode ? "ON" : "OFF";
+            string verbose = (chkVerbose != null && chkVerbose.Checked) ? "ON" : "OFF";
+
+            return string.Join("\r\n", new string[] {
+                "=== System Context ===",
+                "ToolkitVersion: " + AppInfo.ToolkitVersion,
+                "GuiVersion: " + AppInfo.GuiVersion,
+                "Admin: " + admin,
+                "SafeMode: " + safe,
+                "Verbose: " + verbose,
+                "OS: " + Environment.OSVersion,
+                "ProcessArch: " + (Environment.Is64BitProcess ? "x64" : "x86"),
+                "Script: " + (script != null ? (script.DisplayName + " (" + script.FileName + ")") : "Unknown"),
+                "EvidenceDir: " + (string.IsNullOrEmpty(evidenceDir) ? "N/A" : evidenceDir),
+                "======================"
+            });
+        }
+
+        private string BuildTroubleshootGuide(ScriptInfo script)
+        {
+            string evidenceRoot = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "MaintenanceToolkit",
+                "Evidence");
+
+            string reportsHint = "Reports typically open via the Reports tab. Many scripts save .html reports to Desktop or temp depending on the script.";
+
+            return string.Join("\r\n", new string[] {
+                "What this does:",
+                "- " + (script != null ? script.Description : "N/A"),
+                "",
+                "Step-by-step if it fails:",
+                "1) Run the app as Administrator (required for many tools).",
+                "2) Check Safe Mode: if ON, destructive tools may be blocked.",
+                "3) Open the log (bottom panel) and look for the first ERROR line.",
+                "4) Check the evidence bundle folder saved for each run.",
+                "   EvidenceRoot: " + evidenceRoot,
+                "5) If this tool installs/updates apps, verify Winget works: run 'winget --version' in a terminal.",
+                "6) If this tool needs internet, verify connectivity and DNS.",
+                "",
+                "Common root causes:",
+                "- Execution policy / GPO blocking PowerShell scripts",
+                "- Antivirus false positives on networking/password tools",
+                "- Running without admin rights",
+                "- Missing dependency (Winget) or offline environment",
+                "",
+                reportsHint
+            });
         }
 
         public static bool IsAdministrator()

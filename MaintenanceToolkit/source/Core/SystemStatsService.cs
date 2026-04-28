@@ -12,7 +12,10 @@ namespace SystemMaintenance.Core
     public class SystemStatsService
     {
         private static readonly Lazy<SystemStatsService> _instance = new Lazy<SystemStatsService>(() => new SystemStatsService());
-        public static SystemStatsService Instance => _instance.Value;
+        public static SystemStatsService Instance
+        {
+            get { return _instance.Value; }
+        }
 
         private readonly AsyncLazy<string> _cpuName;
         private readonly AsyncLazy<string> _gpuName;
@@ -68,9 +71,9 @@ namespace SystemMaintenance.Core
             var data = new SystemStatsData();
 
             // Set a timeout for WMI initialization tasks to prevent hanging
-            var tCPU = _cpuName.GetValueAsync();
-            var tGPU = _gpuName.GetValueAsync();
-            var tOS = _osName.GetValueAsync();
+            Task<string> tCPU = _cpuName.Value;
+            Task<string> tGPU = _gpuName.Value;
+            Task<string> tOS = _osName.Value;
 
             await Task.WhenAny(Task.WhenAll(tCPU, tGPU, tOS), Task.Delay(2000));
 

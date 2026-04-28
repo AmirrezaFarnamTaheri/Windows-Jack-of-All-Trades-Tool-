@@ -5,6 +5,9 @@ Get-SystemSummary
 Write-Section "Warning"
 Write-Log "This will permanently wipe a file. It cannot be recovered." "Red"
 
+# Safety Check
+Assert-Destructive "This script permanently wipes a file and cannot be undone."
+
 $file = Read-Host "Enter full path to file"
 
 try {

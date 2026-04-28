@@ -14,9 +14,10 @@ namespace SystemMaintenance.Controls.Widgets
         public DashboardWidget(string title)
         {
             this.BackColor = ThemeManager.GetCardColor(ConfigManager.IsDarkMode);
-            this.Size = new Size(300, 150); // Default, but Dashboard will resize
+            this.Size = new Size(300, 120);
             this.Margin = new Padding(0, 0, 0, 10);
-            this.Padding = new Padding(1); // Border effect
+            this.Padding = new Padding(1);
+            this.MinimumSize = new Size(180, 72);
 
             lblHeader = new Label {
                 Text = title,
