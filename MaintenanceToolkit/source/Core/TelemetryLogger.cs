@@ -16,7 +16,10 @@ namespace SystemMaintenance.Core
                 if (!Directory.Exists(LOG_DIR))
                     Directory.CreateDirectory(LOG_DIR);
             }
-            catch { }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Telemetry Logger Bootstrap Failed: {ex.Message}");
+            }
         }
 
         public static void Log(string message)

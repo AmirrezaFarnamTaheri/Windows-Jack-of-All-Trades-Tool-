@@ -129,18 +129,21 @@ namespace SystemMaintenance.Core
 
                         using (ct.Register(() =>
                         {
-                            try
+                            Task.Run(() =>
                             {
-                                if (!p.HasExited)
+                                try
                                 {
-                                    p.Kill();
-                                    p.WaitForExit(); // Wait for actual termination
+                                    if (!p.HasExited)
+                                    {
+                                        p.Kill();
+                                        p.WaitForExit(); // Wait for actual termination
+                                    }
                                 }
-                            }
-                            catch { TelemetryLogger.Log("Failed to kill process on cancellation."); }
-                            var outH = OnOutput;
-                            if (outH != null) outH("Process cancelled.");
-                            tcs.TrySetResult(false);
+                                catch (Exception ex) { TelemetryLogger.LogException(ex, "Kill Process on Cancellation"); }
+                                var outH = OnOutput;
+                                if (outH != null) outH("Process cancelled.");
+                                tcs.TrySetResult(false);
+                            });
                         }))
                         {
                             await tcs.Task;
@@ -150,7 +153,7 @@ namespace SystemMaintenance.Core
                             }
                         }
 
-                        try { exitCode = p.ExitCode; } catch { TelemetryLogger.Log("Failed to get ExitCode."); }
+                        try { exitCode = p.ExitCode; } catch (Exception ex) { TelemetryLogger.LogException(ex, "Get ExitCode"); }
                     }
                     finally
                     {
@@ -289,14 +292,14 @@ namespace SystemMaintenance.Core
                 string targetResource = null;
                 foreach (string r in resources)
                 {
-                    if (r.EndsWith(fileName, StringComparison.OrdinalIgnoreCase))
+                    if (r.EndsWith("." + fileName, StringComparison.OrdinalIgnoreCase) || r.EndsWith("/" + fileName, StringComparison.OrdinalIgnoreCase))
                     {
                         targetResource = r;
                         break;
                     }
                 }
 
-                if (targetResource == null) return true; // Cannot verify against resource
+                if (targetResource == null) return false; // Fail securely if no trusted resource is available to verify against
 
                 using (var sha256 = SHA256.Create())
                 using (var embeddedStream = assembly.GetManifestResourceStream(targetResource))

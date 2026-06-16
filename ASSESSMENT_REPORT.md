@@ -38,7 +38,7 @@ Strategic recommendations mandate immediate refactoring of the asynchronous thre
 - **Operating Model:** C# runtime orchestrating an out-of-process PowerShell execution engine, capturing redirected streams.
 - **Boundary Maps:**
   - UI ↔ Core Logic: Bound by strongly typed models (`ScriptInfo`, `SystemStatsData`).
-  - Core Logic ↔ OS: Bound via process injection (`powershell.exe`) and native OS interfaces (WMI/Registry/P-Invoke).
+  - Core Logic ↔ OS: Bound via process spawning (`powershell.exe`) and native OS interfaces (WMI/Registry/P-Invoke).
 - **Major Components:**
   - `MainForm.cs` & Widgets: Application shell.
   - `ScriptExecutor.cs`: Execution and cancellation engine.
