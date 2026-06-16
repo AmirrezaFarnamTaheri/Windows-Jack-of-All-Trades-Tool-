@@ -32,10 +32,32 @@ namespace SystemMaintenance.Core
 
         private SystemStatsService()
         {
-            _cpuName = new AsyncLazy<string>(() => Task.Run(() => GetCpuInfo()));
-            _gpuName = new AsyncLazy<string>(() => Task.Run(() => GetGpuInfo()));
-            _osName = new AsyncLazy<string>(() => Task.Run(() => GetOsInfo()));
+            _cpuName = new AsyncLazy<string>(() => SafeWmiTask(GetCpuInfo, "Unknown CPU"));
+            _gpuName = new AsyncLazy<string>(() => SafeWmiTask(GetGpuInfo, "Basic Display Adapter"));
+            _osName = new AsyncLazy<string>(() => SafeWmiTask(GetOsInfo, Environment.OSVersion.ToString()));
             InitializeNetworkCounters();
+        }
+
+        private async Task<string> SafeWmiTask(Func<string> wmiCall, string fallback)
+        {
+            try
+            {
+                var task = Task.Run(wmiCall);
+                if (await Task.WhenAny(task, Task.Delay(2000)) == task)
+                {
+                    return await task;
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine($"WMI Call timed out. Using fallback: {fallback}");
+                    return fallback;
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"WMI Call failed: {ex.Message}");
+                return fallback;
+            }
         }
 
         private void InitializeNetworkCounters()
@@ -56,14 +78,14 @@ namespace SystemMaintenance.Core
                         }
                         _activeInterface = inst;
                         break;
-                    } catch {}
+                    } catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Error: {ex.Message}"); }
                 }
 
                 if (_activeInterface != null) {
                     _netSent = new PerformanceCounter("Network Interface", "Bytes Sent/sec", _activeInterface);
                     _netRecv = new PerformanceCounter("Network Interface", "Bytes Received/sec", _activeInterface);
                 }
-            } catch {}
+            } catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Error: {ex.Message}"); }
         }
 
         public async Task<SystemStatsData> GetStatsAsync()
@@ -110,7 +132,7 @@ namespace SystemMaintenance.Core
                         return name.Length > 40 ? name.Substring(0, 37) + "..." : name;
                     }
                 }
-            } catch {}
+            } catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Error: {ex.Message}"); }
             return "Unknown CPU";
         }
 
@@ -121,7 +143,7 @@ namespace SystemMaintenance.Core
                  {
                      foreach (var item in searcher.Get()) return item["Name"].ToString();
                  }
-            } catch {}
+            } catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Error: {ex.Message}"); }
             return "Basic Display Adapter";
         }
 
@@ -135,7 +157,7 @@ namespace SystemMaintenance.Core
                         return item["Caption"].ToString();
                     }
                 }
-            } catch {}
+            } catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Error: {ex.Message}"); }
             return Environment.OSVersion.ToString();
         }
 
@@ -168,7 +190,7 @@ namespace SystemMaintenance.Core
                             data.RamFree = Convert.ToInt64(item["FreePhysicalMemory"]) / 1024;
                         }
                     }
-                } catch {}
+                } catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Error: {ex.Message}"); }
             }
         }
 
@@ -186,17 +208,17 @@ namespace SystemMaintenance.Core
                         data.Drives.Add(d);
                     }
                 }
-            } catch {}
+            } catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Error: {ex.Message}"); }
         }
 
         private void GetRebootStatus(SystemStatsData data)
         {
             try {
                  bool reboot = false;
-                 try { using (var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending")) { if (key != null) reboot = true; } } catch {}
-                 try { using (var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired")) { if (key != null) reboot = true; } } catch {}
+                 try { using (var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending")) { if (key != null) reboot = true; } } catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Error: {ex.Message}"); }
+                 try { using (var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired")) { if (key != null) reboot = true; } } catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Error: {ex.Message}"); }
                  data.RebootPending = reboot;
-            } catch {}
+            } catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Error: {ex.Message}"); }
         }
 
         private void GetNetworkUsage(SystemStatsData data)
@@ -206,7 +228,7 @@ namespace SystemMaintenance.Core
                     // Returns bytes/sec. We convert to KB/s
                     data.NetSent = (long)_netSent.NextValue();
                     data.NetRecv = (long)_netRecv.NextValue();
-                } catch {}
+                } catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Error: {ex.Message}"); }
             }
         }
     }

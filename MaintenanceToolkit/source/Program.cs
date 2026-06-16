@@ -29,7 +29,7 @@ namespace SystemMaintenance
                         // Ignore if locked
                     }
                 }
-            } catch {}
+            } catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Error: {ex.Message}"); }
         }
     }
 }

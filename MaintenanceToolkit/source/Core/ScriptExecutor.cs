@@ -36,7 +36,7 @@ namespace SystemMaintenance.Core
 
             try
             {
-                await Task.Run(() => ExecuteScriptInternal(script, verbose, ct));
+                await ExecuteScriptInternalAsync(script, verbose, ct);
             }
             finally
             {
@@ -44,7 +44,7 @@ namespace SystemMaintenance.Core
             }
         }
 
-        private void ExecuteScriptInternal(ScriptInfo script, bool verbose, CancellationToken ct)
+        private async Task ExecuteScriptInternalAsync(ScriptInfo script, bool verbose, CancellationToken ct)
         {
             string path = FindScriptPath(script.FileName);
 
@@ -83,56 +83,52 @@ namespace SystemMaintenance.Core
                 if (!script.IsInteractive) psi.EnvironmentVariables["MAINTENANCE_GUI_HOST"] = "1";
                 else if (psi.EnvironmentVariables.ContainsKey("MAINTENANCE_GUI_HOST")) psi.EnvironmentVariables.Remove("MAINTENANCE_GUI_HOST");
 
-                if (script.IsInteractive)
+                using (Process p = new Process { StartInfo = psi })
                 {
-                    psi.UseShellExecute = false;
-                    psi.CreateNoWindow = false;
+                    lock(_processLock) _currentProcess = p;
 
-                    using (Process p = new Process { StartInfo = psi })
+                    if (script.IsInteractive)
                     {
-                         lock(_processLock) _currentProcess = p;
-                         p.Start();
-                         p.WaitForExit();
-                         try { exitCode = p.ExitCode; } catch {}
-                         lock(_processLock) _currentProcess = null;
+                        p.StartInfo.UseShellExecute = false;
+                        p.StartInfo.CreateNoWindow = false;
                     }
-                }
-                else
-                {
-                    psi.UseShellExecute = false;
-                    psi.CreateNoWindow = true;
-                    psi.StandardOutputEncoding = Encoding.UTF8;
-                    psi.StandardErrorEncoding = Encoding.UTF8;
-                    psi.RedirectStandardOutput = true;
-                    psi.RedirectStandardError = true;
-
-                    using (Process p = new Process { StartInfo = psi })
+                    else
                     {
-                        lock(_processLock) _currentProcess = p;
+                        p.StartInfo.UseShellExecute = false;
+                        p.StartInfo.CreateNoWindow = true;
+                        p.StartInfo.StandardOutputEncoding = Encoding.UTF8;
+                        p.StartInfo.StandardErrorEncoding = Encoding.UTF8;
+                        p.StartInfo.RedirectStandardOutput = true;
+                        p.StartInfo.RedirectStandardError = true;
 
                         p.OutputDataReceived += (s,e) => { if (e.Data!=null) { var outH = OnOutput; if (outH != null) outH(e.Data); } };
                         p.ErrorDataReceived += (s,e) => { if (e.Data!=null) { var errH = OnError; if (errH != null) errH("ERR: " + e.Data); } };
+                    }
 
-                        p.Start();
+                    p.EnableRaisingEvents = true;
+                    var tcs = new TaskCompletionSource<bool>();
+                    p.Exited += (s, e) => tcs.TrySetResult(true);
+
+                    p.Start();
+                    if (!script.IsInteractive)
+                    {
                         p.BeginOutputReadLine();
                         p.BeginErrorReadLine();
-
-                        while (!p.HasExited) {
-                            if (ct.IsCancellationRequested || _disposed) {
-                                try { p.Kill(); } catch {}
-                                var outH = OnOutput;
-                                if (outH != null) outH("Process cancelled.");
-                                break;
-                            }
-                            Thread.Sleep(100);
-                        }
-
-                        if (!ct.IsCancellationRequested && !_disposed) p.WaitForExit();
-
-                        try { exitCode = p.ExitCode; } catch {}
-
-                        lock(_processLock) _currentProcess = null;
                     }
+
+                    using (ct.Register(() =>
+                    {
+                        try { if (!p.HasExited) p.Kill(); } catch { System.Diagnostics.Debug.WriteLine("Failed to kill process on cancellation."); }
+                        var outH = OnOutput;
+                        if (outH != null) outH("Process cancelled.");
+                        tcs.TrySetResult(false);
+                    }))
+                    {
+                        await tcs.Task;
+                    }
+
+                    try { exitCode = p.ExitCode; } catch { System.Diagnostics.Debug.WriteLine("Failed to get ExitCode."); }
+                    lock(_processLock) _currentProcess = null;
                 }
             } catch (Exception ex) {
                 var err = OnError;
@@ -154,7 +150,7 @@ namespace SystemMaintenance.Core
         {
             lock(_processLock) {
                 if (_currentProcess != null && !_currentProcess.HasExited) {
-                    try { _currentProcess.Kill(); } catch {}
+                    try { _currentProcess.Kill(); } catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Error: {ex.Message}"); }
                 }
             }
         }
@@ -265,7 +261,7 @@ namespace SystemMaintenance.Core
 
             if (_tempScriptDir != null && Directory.Exists(_tempScriptDir))
             {
-                try { Directory.Delete(_tempScriptDir, true); } catch {}
+                try { Directory.Delete(_tempScriptDir, true); } catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Error: {ex.Message}"); }
             }
         }
     }
