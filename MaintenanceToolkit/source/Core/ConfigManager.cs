@@ -115,7 +115,7 @@ namespace SystemMaintenance.Core
                 {
                     Favorites = new HashSet<string>(File.ReadAllLines(favoritesPath).Where(l => !string.IsNullOrWhiteSpace(l)));
                 }
-            } catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Error: {ex.Message}"); }
+            } catch (Exception ex) { TelemetryLogger.LogException(ex); }
         }
 
         public static void Save()
@@ -135,7 +135,7 @@ namespace SystemMaintenance.Core
                             "UiToolbarHeight=" + (UiToolbarHeight <= 0 ? 58 : UiToolbarHeight)
                         }));
                 File.WriteAllLines(GetFavoritesPath(), Favorites);
-            } catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Error: {ex.Message}"); }
+            } catch (Exception ex) { TelemetryLogger.LogException(ex); }
         }
 
         public static void ToggleFavorite(string scriptName)

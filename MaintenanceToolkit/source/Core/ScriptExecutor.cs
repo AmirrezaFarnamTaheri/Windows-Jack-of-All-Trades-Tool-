@@ -36,7 +36,7 @@ namespace SystemMaintenance.Core
 
             try
             {
-                await ExecuteScriptInternalAsync(script, verbose, ct);
+                await Task.Run(() => ExecuteScriptInternalAsync(script, verbose, ct));
             }
             finally
             {
@@ -85,8 +85,6 @@ namespace SystemMaintenance.Core
 
                 using (Process p = new Process { StartInfo = psi })
                 {
-                    lock(_processLock) _currentProcess = p;
-
                     if (script.IsInteractive)
                     {
                         p.StartInfo.UseShellExecute = false;
@@ -110,25 +108,45 @@ namespace SystemMaintenance.Core
                     p.Exited += (s, e) => tcs.TrySetResult(true);
 
                     p.Start();
-                    if (!script.IsInteractive)
-                    {
-                        p.BeginOutputReadLine();
-                        p.BeginErrorReadLine();
-                    }
+                    lock(_processLock) _currentProcess = p;
 
-                    using (ct.Register(() =>
+                    try
                     {
-                        try { if (!p.HasExited) p.Kill(); } catch { System.Diagnostics.Debug.WriteLine("Failed to kill process on cancellation."); }
-                        var outH = OnOutput;
-                        if (outH != null) outH("Process cancelled.");
-                        tcs.TrySetResult(false);
-                    }))
-                    {
-                        await tcs.Task;
-                    }
+                        if (!script.IsInteractive)
+                        {
+                            p.BeginOutputReadLine();
+                            p.BeginErrorReadLine();
+                        }
 
-                    try { exitCode = p.ExitCode; } catch { System.Diagnostics.Debug.WriteLine("Failed to get ExitCode."); }
-                    lock(_processLock) _currentProcess = null;
+                        using (ct.Register(() =>
+                        {
+                            try
+                            {
+                                if (!p.HasExited)
+                                {
+                                    p.Kill();
+                                    p.WaitForExit(); // Wait for actual termination
+                                }
+                            }
+                            catch { TelemetryLogger.Log("Failed to kill process on cancellation."); }
+                            var outH = OnOutput;
+                            if (outH != null) outH("Process cancelled.");
+                            tcs.TrySetResult(false);
+                        }))
+                        {
+                            await tcs.Task;
+                            if (!script.IsInteractive)
+                            {
+                                p.WaitForExit(); // Wait to ensure output streams finish flushing
+                            }
+                        }
+
+                        try { exitCode = p.ExitCode; } catch { TelemetryLogger.Log("Failed to get ExitCode."); }
+                    }
+                    finally
+                    {
+                        lock(_processLock) _currentProcess = null;
+                    }
                 }
             } catch (Exception ex) {
                 var err = OnError;
@@ -150,7 +168,7 @@ namespace SystemMaintenance.Core
         {
             lock(_processLock) {
                 if (_currentProcess != null && !_currentProcess.HasExited) {
-                    try { _currentProcess.Kill(); } catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Error: {ex.Message}"); }
+                    try { _currentProcess.Kill(); } catch (Exception ex) { TelemetryLogger.LogException(ex); }
                 }
             }
         }
@@ -261,7 +279,7 @@ namespace SystemMaintenance.Core
 
             if (_tempScriptDir != null && Directory.Exists(_tempScriptDir))
             {
-                try { Directory.Delete(_tempScriptDir, true); } catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Error: {ex.Message}"); }
+                try { Directory.Delete(_tempScriptDir, true); } catch (Exception ex) { TelemetryLogger.LogException(ex); }
             }
         }
     }
