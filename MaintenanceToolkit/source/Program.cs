@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Windows.Forms;
 using SystemMaintenance.Forms;
+using SystemMaintenance.Core;
 
 namespace SystemMaintenance
 {
@@ -29,7 +30,7 @@ namespace SystemMaintenance
                         // Ignore if locked
                     }
                 }
-            } catch {}
+            } catch (Exception ex) { TelemetryLogger.LogException(ex); }
         }
     }
 }

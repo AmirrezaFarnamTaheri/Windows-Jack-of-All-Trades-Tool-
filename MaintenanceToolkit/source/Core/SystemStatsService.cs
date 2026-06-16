@@ -3,8 +3,9 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Management;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
+using Microsoft.Win32;
 using SystemMaintenance.Models;
 
 namespace SystemMaintenance.Core
@@ -32,10 +33,32 @@ namespace SystemMaintenance.Core
 
         private SystemStatsService()
         {
-            _cpuName = new AsyncLazy<string>(() => Task.Run(() => GetCpuInfo()));
-            _gpuName = new AsyncLazy<string>(() => Task.Run(() => GetGpuInfo()));
-            _osName = new AsyncLazy<string>(() => Task.Run(() => GetOsInfo()));
+            _cpuName = new AsyncLazy<string>(() => SafeWmiTask(GetCpuInfo, "Unknown CPU"));
+            _gpuName = new AsyncLazy<string>(() => SafeWmiTask(GetGpuInfo, "Basic Display Adapter"));
+            _osName = new AsyncLazy<string>(() => SafeWmiTask(GetOsInfo, Environment.OSVersion.ToString()));
             InitializeNetworkCounters();
+        }
+
+        private async Task<string> SafeWmiTask(Func<string> wmiCall, string fallback)
+        {
+            try
+            {
+                var task = Task.Run(wmiCall);
+                if (await Task.WhenAny(task, Task.Delay(2000)) == task)
+                {
+                    return await task;
+                }
+                else
+                {
+                    TelemetryLogger.Log($"WMI Call timed out. Fallback: {fallback}");
+                    return fallback;
+                }
+            }
+            catch (Exception ex)
+            {
+                TelemetryLogger.LogException(ex, "WMI Call");
+                return fallback;
+            }
         }
 
         private void InitializeNetworkCounters()
@@ -56,14 +79,14 @@ namespace SystemMaintenance.Core
                         }
                         _activeInterface = inst;
                         break;
-                    } catch {}
+                    } catch (Exception ex) { TelemetryLogger.LogException(ex); }
                 }
 
                 if (_activeInterface != null) {
                     _netSent = new PerformanceCounter("Network Interface", "Bytes Sent/sec", _activeInterface);
                     _netRecv = new PerformanceCounter("Network Interface", "Bytes Received/sec", _activeInterface);
                 }
-            } catch {}
+            } catch (Exception ex) { TelemetryLogger.LogException(ex); }
         }
 
         public async Task<SystemStatsData> GetStatsAsync()
@@ -97,45 +120,84 @@ namespace SystemMaintenance.Core
             return data;
         }
 
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+        private class MEMORYSTATUSEX
+        {
+            public uint dwLength;
+            public uint dwMemoryLoad;
+            public ulong ullTotalPhys;
+            public ulong ullAvailPhys;
+            public ulong ullTotalPageFile;
+            public ulong ullAvailPageFile;
+            public ulong ullTotalVirtual;
+            public ulong ullAvailVirtual;
+            public ulong ullAvailExtendedVirtual;
+            public MEMORYSTATUSEX() { this.dwLength = (uint)Marshal.SizeOf(typeof(MEMORYSTATUSEX)); }
+        }
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool GlobalMemoryStatusEx([In, Out] MEMORYSTATUSEX lpBuffer);
+
         private string GetCpuInfo()
         {
             try {
-                using (var searcher = new ManagementObjectSearcher("SELECT Name, NumberOfCores, NumberOfLogicalProcessors FROM Win32_Processor"))
+                _cores = Environment.ProcessorCount; // Approximating cores as threads
+                _threads = Environment.ProcessorCount;
+
+                using (RegistryKey key = Registry.LocalMachine.OpenSubKey(@"HARDWARE\DESCRIPTION\System\CentralProcessor\0"))
                 {
-                    foreach (var item in searcher.Get())
+                    if (key != null)
                     {
-                        _cores = Convert.ToInt32(item["NumberOfCores"]);
-                        _threads = Convert.ToInt32(item["NumberOfLogicalProcessors"]);
-                        string name = item["Name"].ToString();
-                        return name.Length > 40 ? name.Substring(0, 37) + "..." : name;
+                        string name = key.GetValue("ProcessorNameString") as string;
+                        if (!string.IsNullOrEmpty(name))
+                        {
+                            return name.Length > 40 ? name.Substring(0, 37) + "..." : name;
+                        }
                     }
                 }
-            } catch {}
+            } catch (Exception ex) { TelemetryLogger.LogException(ex); }
             return "Unknown CPU";
         }
 
         private string GetGpuInfo()
         {
             try {
-                 using (var searcher = new ManagementObjectSearcher("SELECT Name FROM Win32_VideoController"))
+                 // Fast registry fallback for GPU (First active PCI display adapter)
+                 using (RegistryKey key = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\0000"))
                  {
-                     foreach (var item in searcher.Get()) return item["Name"].ToString();
+                     if (key != null)
+                     {
+                         string name = key.GetValue("DriverDesc") as string;
+                         if (!string.IsNullOrEmpty(name)) return name;
+                     }
                  }
-            } catch {}
+            } catch (Exception ex) { TelemetryLogger.LogException(ex); }
             return "Basic Display Adapter";
         }
 
         private string GetOsInfo()
         {
             try {
-                using (var searcher = new ManagementObjectSearcher("SELECT Caption, TotalVisibleMemorySize FROM Win32_OperatingSystem"))
+                MEMORYSTATUSEX memStatus = new MEMORYSTATUSEX();
+                if (GlobalMemoryStatusEx(memStatus))
                 {
-                    foreach (var item in searcher.Get()) {
-                        _ramTotal = Convert.ToInt64(item["TotalVisibleMemorySize"]) / 1024;
-                        return item["Caption"].ToString();
+                    _ramTotal = (long)(memStatus.ullTotalPhys / 1024);
+                }
+
+                using (RegistryKey key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion"))
+                {
+                    if (key != null)
+                    {
+                        string productName = key.GetValue("ProductName") as string;
+                        string releaseId = key.GetValue("ReleaseId") as string;
+                        if (!string.IsNullOrEmpty(productName))
+                        {
+                            return string.IsNullOrEmpty(releaseId) ? productName : $"{productName} ({releaseId})";
+                        }
                     }
                 }
-            } catch {}
+            } catch (Exception ex) { TelemetryLogger.LogException(ex); }
             return Environment.OSVersion.ToString();
         }
 
@@ -154,21 +216,18 @@ namespace SystemMaintenance.Core
         private void GetRamUsage(SystemStatsData data)
         {
             try {
-                // WMI is slow, but PerformanceCounter is fast
                 using (var pc = new PerformanceCounter("Memory", "Available MBytes")) {
                     data.RamFree = (long)pc.NextValue();
                 }
             } catch {
-                // Fallback to WMI
+                // Native fallback instead of WMI
                 try {
-                    using (var searcher = new ManagementObjectSearcher("SELECT FreePhysicalMemory FROM Win32_OperatingSystem"))
+                    MEMORYSTATUSEX memStatus = new MEMORYSTATUSEX();
+                    if (GlobalMemoryStatusEx(memStatus))
                     {
-                        foreach (var item in searcher.Get())
-                        {
-                            data.RamFree = Convert.ToInt64(item["FreePhysicalMemory"]) / 1024;
-                        }
+                        data.RamFree = (long)(memStatus.ullAvailPhys / 1024 / 1024); // To MB
                     }
-                } catch {}
+                } catch (Exception ex) { TelemetryLogger.LogException(ex); }
             }
         }
 
@@ -186,17 +245,17 @@ namespace SystemMaintenance.Core
                         data.Drives.Add(d);
                     }
                 }
-            } catch {}
+            } catch (Exception ex) { TelemetryLogger.LogException(ex); }
         }
 
         private void GetRebootStatus(SystemStatsData data)
         {
             try {
                  bool reboot = false;
-                 try { using (var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending")) { if (key != null) reboot = true; } } catch {}
-                 try { using (var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired")) { if (key != null) reboot = true; } } catch {}
+                 try { using (var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending")) { if (key != null) reboot = true; } } catch (Exception ex) { TelemetryLogger.LogException(ex); }
+                 try { using (var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired")) { if (key != null) reboot = true; } } catch (Exception ex) { TelemetryLogger.LogException(ex); }
                  data.RebootPending = reboot;
-            } catch {}
+            } catch (Exception ex) { TelemetryLogger.LogException(ex); }
         }
 
         private void GetNetworkUsage(SystemStatsData data)
@@ -206,7 +265,7 @@ namespace SystemMaintenance.Core
                     // Returns bytes/sec. We convert to KB/s
                     data.NetSent = (long)_netSent.NextValue();
                     data.NetRecv = (long)_netRecv.NextValue();
-                } catch {}
+                } catch (Exception ex) { TelemetryLogger.LogException(ex); }
             }
         }
     }

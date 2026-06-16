@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -36,7 +37,7 @@ namespace SystemMaintenance.Core
 
             try
             {
-                await Task.Run(() => ExecuteScriptInternal(script, verbose, ct));
+                await Task.Run(() => ExecuteScriptInternalAsync(script, verbose, ct));
             }
             finally
             {
@@ -44,13 +45,21 @@ namespace SystemMaintenance.Core
             }
         }
 
-        private void ExecuteScriptInternal(ScriptInfo script, bool verbose, CancellationToken ct)
+        private async Task ExecuteScriptInternalAsync(ScriptInfo script, bool verbose, CancellationToken ct)
         {
             string path = FindScriptPath(script.FileName);
 
             if (path == null) {
                 var err = OnError;
                 if (err != null) err("Script file not found: " + script.FileName);
+                return;
+            }
+
+            if (ConfigManager.IsSafeMode && !VerifyScriptIntegrity(path, script.FileName))
+            {
+                var err = OnError;
+                if (err != null) err("SECURITY ERROR: Script integrity validation failed for " + script.FileName);
+                TelemetryLogger.Log($"SECURITY BLOCKED: {script.FileName} failed SHA256 integrity check.");
                 return;
             }
 
@@ -83,54 +92,71 @@ namespace SystemMaintenance.Core
                 if (!script.IsInteractive) psi.EnvironmentVariables["MAINTENANCE_GUI_HOST"] = "1";
                 else if (psi.EnvironmentVariables.ContainsKey("MAINTENANCE_GUI_HOST")) psi.EnvironmentVariables.Remove("MAINTENANCE_GUI_HOST");
 
-                if (script.IsInteractive)
+                using (Process p = new Process { StartInfo = psi })
                 {
-                    psi.UseShellExecute = false;
-                    psi.CreateNoWindow = false;
-
-                    using (Process p = new Process { StartInfo = psi })
+                    if (script.IsInteractive)
                     {
-                         lock(_processLock) _currentProcess = p;
-                         p.Start();
-                         p.WaitForExit();
-                         try { exitCode = p.ExitCode; } catch {}
-                         lock(_processLock) _currentProcess = null;
+                        p.StartInfo.UseShellExecute = false;
+                        p.StartInfo.CreateNoWindow = false;
                     }
-                }
-                else
-                {
-                    psi.UseShellExecute = false;
-                    psi.CreateNoWindow = true;
-                    psi.StandardOutputEncoding = Encoding.UTF8;
-                    psi.StandardErrorEncoding = Encoding.UTF8;
-                    psi.RedirectStandardOutput = true;
-                    psi.RedirectStandardError = true;
-
-                    using (Process p = new Process { StartInfo = psi })
+                    else
                     {
-                        lock(_processLock) _currentProcess = p;
+                        p.StartInfo.UseShellExecute = false;
+                        p.StartInfo.CreateNoWindow = true;
+                        p.StartInfo.StandardOutputEncoding = Encoding.UTF8;
+                        p.StartInfo.StandardErrorEncoding = Encoding.UTF8;
+                        p.StartInfo.RedirectStandardOutput = true;
+                        p.StartInfo.RedirectStandardError = true;
 
                         p.OutputDataReceived += (s,e) => { if (e.Data!=null) { var outH = OnOutput; if (outH != null) outH(e.Data); } };
                         p.ErrorDataReceived += (s,e) => { if (e.Data!=null) { var errH = OnError; if (errH != null) errH("ERR: " + e.Data); } };
+                    }
 
-                        p.Start();
-                        p.BeginOutputReadLine();
-                        p.BeginErrorReadLine();
+                    p.EnableRaisingEvents = true;
+                    var tcs = new TaskCompletionSource<bool>();
+                    p.Exited += (s, e) => tcs.TrySetResult(true);
 
-                        while (!p.HasExited) {
-                            if (ct.IsCancellationRequested || _disposed) {
-                                try { p.Kill(); } catch {}
-                                var outH = OnOutput;
-                                if (outH != null) outH("Process cancelled.");
-                                break;
-                            }
-                            Thread.Sleep(100);
+                    p.Start();
+                    lock(_processLock) _currentProcess = p;
+
+                    try
+                    {
+                        if (!script.IsInteractive)
+                        {
+                            p.BeginOutputReadLine();
+                            p.BeginErrorReadLine();
                         }
 
-                        if (!ct.IsCancellationRequested && !_disposed) p.WaitForExit();
+                        using (ct.Register(() =>
+                        {
+                            Task.Run(() =>
+                            {
+                                try
+                                {
+                                    if (!p.HasExited)
+                                    {
+                                        p.Kill();
+                                        p.WaitForExit(); // Wait for actual termination
+                                    }
+                                }
+                                catch (Exception ex) { TelemetryLogger.LogException(ex, "Kill Process on Cancellation"); }
+                                var outH = OnOutput;
+                                if (outH != null) outH("Process cancelled.");
+                                tcs.TrySetResult(false);
+                            });
+                        }))
+                        {
+                            await tcs.Task;
+                            if (!script.IsInteractive)
+                            {
+                                p.WaitForExit(); // Wait to ensure output streams finish flushing
+                            }
+                        }
 
-                        try { exitCode = p.ExitCode; } catch {}
-
+                        try { exitCode = p.ExitCode; } catch (Exception ex) { TelemetryLogger.LogException(ex, "Get ExitCode"); }
+                    }
+                    finally
+                    {
                         lock(_processLock) _currentProcess = null;
                     }
                 }
@@ -154,7 +180,7 @@ namespace SystemMaintenance.Core
         {
             lock(_processLock) {
                 if (_currentProcess != null && !_currentProcess.HasExited) {
-                    try { _currentProcess.Kill(); } catch {}
+                    try { _currentProcess.Kill(); } catch (Exception ex) { TelemetryLogger.LogException(ex); }
                 }
             }
         }
@@ -256,6 +282,47 @@ namespace SystemMaintenance.Core
             }
         }
 
+        private bool VerifyScriptIntegrity(string externalPath, string fileName)
+        {
+            try
+            {
+                var assembly = System.Reflection.Assembly.GetExecutingAssembly();
+                string[] resources = assembly.GetManifestResourceNames();
+
+                string targetResource = null;
+                foreach (string r in resources)
+                {
+                    if (r.EndsWith("." + fileName, StringComparison.OrdinalIgnoreCase) || r.EndsWith("/" + fileName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        targetResource = r;
+                        break;
+                    }
+                }
+
+                if (targetResource == null) return false; // Fail securely if no trusted resource is available to verify against
+
+                using (var sha256 = SHA256.Create())
+                using (var embeddedStream = assembly.GetManifestResourceStream(targetResource))
+                using (var externalStream = File.OpenRead(externalPath))
+                {
+                    byte[] embeddedHash = sha256.ComputeHash(embeddedStream);
+                    byte[] externalHash = sha256.ComputeHash(externalStream);
+
+                    if (embeddedHash.Length != externalHash.Length) return false;
+                    for (int i = 0; i < embeddedHash.Length; i++)
+                    {
+                        if (embeddedHash[i] != externalHash[i]) return false;
+                    }
+                }
+                return true;
+            }
+            catch (Exception ex)
+            {
+                TelemetryLogger.LogException(ex, "Integrity Verification");
+                return false; // Fail safe
+            }
+        }
+
         public void Dispose()
         {
             if (_disposed) return;
@@ -265,7 +332,7 @@ namespace SystemMaintenance.Core
 
             if (_tempScriptDir != null && Directory.Exists(_tempScriptDir))
             {
-                try { Directory.Delete(_tempScriptDir, true); } catch {}
+                try { Directory.Delete(_tempScriptDir, true); } catch (Exception ex) { TelemetryLogger.LogException(ex); }
             }
         }
     }
