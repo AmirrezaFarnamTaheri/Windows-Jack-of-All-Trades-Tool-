@@ -3,9 +3,9 @@
 ## 1. Executive Summary
 
 ### Key Conclusions & Strategic Recommendations
-The MaintenanceToolkit operates as an interface-to-execution translation layer bridging a C# Windows Forms UI and 80+ isolated PowerShell payload scripts. The exhaustive structural analysis reveals a highly decoupled architecture that ensures excellent script auditability and bypassing of native development tooling. However, the system's core execution runtime exhibits critical structural debt in concurrent operations (blocking thread pooling) and global telemetry boundaries (pervasive silent failures).
+The MaintenanceToolkit operates as an interface-to-execution translation layer bridging a C# Windows Forms UI and 80+ isolated PowerShell payload scripts. The exhaustive structural analysis reveals a highly decoupled architecture that ensures excellent script auditability and bypassing of native development tooling. However, the system's core execution runtime exhibits critical structural debt in concurrent operations (blocking thread pooling), global telemetry boundaries (pervasive silent failures), and systemic reliance on fragile native APIs (WMI).
 
-Strategic recommendations mandate immediate refactoring of the asynchronous thread synchronization models and the injection of a unified, persistent global telemetry boundary across all core C# subsystems to ensure operational resilience and traceability.
+Strategic recommendations mandate immediate refactoring of the asynchronous thread synchronization models, the injection of a unified global telemetry boundary, the complete eradication of WMI in favor of Registry/P-Invoke native APIs, and the introduction of cryptographic integrity validation for payload scripts.
 
 ### Major Strengths & Weaknesses
 **Strengths:**
@@ -15,17 +15,19 @@ Strategic recommendations mandate immediate refactoring of the asynchronous thre
 
 **Weaknesses:**
 - **Tier 2 System Hardening:** Empty exception handling blocks (`catch {}`) effectively mask silent operational failures, blinding developers to root causes of hangs.
-- **Tier 2 Concurrency:** Thread starvation risks within `ScriptExecutor.cs` via legacy `while/Thread.Sleep` polling loops instead of native `TaskCompletionSource` mapping.
+- **Tier 2 Concurrency:** Thread starvation risks within `ScriptExecutor.cs` via legacy `while/Thread.Sleep` polling loops.
 - **Tier 3 Lifecycle:** Brittle integrations with Windows Management Instrumentation (WMI) within `SystemStatsService.cs` inherently risking synchronous hangs during host OS strain.
+- **Tier 2 Security:** Complete lack of cryptographic payload validation, trusting any script sitting in the deployment directory.
 
 ### Highest Risks & Transformational (10x) Opportunities
 **Highest Risks:**
-- **Telemetry Void:** Pervasive silent exception swallowing obscures script execution failures, deployment anomalies, and infrastructure capability drift.
+- **Supply Chain Injection:** Modifying the `.ps1` files directly on disk allows an attacker to achieve local privilege escalation natively within the application's bypass execution environment.
 - **Resource Exhaustion:** Thread starvation caused by blocking thread waits scaling with parallel maintenance script scheduling.
 
 **Transformational (10x) Opportunities:**
-- **System Resilience (10x):** Integrating structured execution tracking via a centralized `TelemetryLogger.cs` coupled with fully asynchronous, event-driven process monitoring will elevate diagnostic speeds and MTTR exponentially.
-- **Operational Leverage (10x):** Substituting fragile, synchronous WMI queries with direct, memory-level Performance Counter hooks natively optimizes the CPU overhead constraint, returning hardware resources directly to the end-user.
+- **System Resilience (10x):** Integrating structured execution tracking via a centralized `TelemetryLogger.cs` coupled with fully asynchronous, event-driven process monitoring elevates diagnostic speeds and MTTR exponentially.
+- **Operational Leverage (10x):** Substituting fragile, synchronous WMI queries with direct, memory-level Native P-Invokes and Registry Hooks fundamentally drops the overhead profile to zero.
+- **Security Hardening (10x):** Implementing real-time SHA-256 cryptographic verification of loaded payloads against embedded resources ensures absolute supply-chain trust.
 
 ---
 
@@ -36,7 +38,7 @@ Strategic recommendations mandate immediate refactoring of the asynchronous thre
 - **Operating Model:** C# runtime orchestrating an out-of-process PowerShell execution engine, capturing redirected streams.
 - **Boundary Maps:**
   - UI ↔ Core Logic: Bound by strongly typed models (`ScriptInfo`, `SystemStatsData`).
-  - Core Logic ↔ OS: Bound via process injection (`powershell.exe`) and native OS interfaces (WMI/PerformanceCounters).
+  - Core Logic ↔ OS: Bound via process injection (`powershell.exe`) and native OS interfaces (WMI/Registry/P-Invoke).
 - **Major Components:**
   - `MainForm.cs` & Widgets: Application shell.
   - `ScriptExecutor.cs`: Execution and cancellation engine.
@@ -49,7 +51,7 @@ Strategic recommendations mandate immediate refactoring of the asynchronous thre
 
 ### Component Inventory & Topology Mapping
 - **SystemStatsService:** `Criticality: High`, `Maturity: Low`, `Risks: Blocking OS WMI queries`.
-- **ScriptExecutor:** `Criticality: Critical`, `Maturity: Medium`, `Risks: Thread exhaustion, Race conditions during cancellation`.
+- **ScriptExecutor:** `Criticality: Critical`, `Maturity: Medium`, `Risks: Thread exhaustion, payload injection`.
 - **ConfigManager:** `Criticality: Medium`, `Maturity: High`, `Risks: Silent local I/O failures`.
 
 ### End-to-End Data Flows
@@ -64,7 +66,7 @@ Strategic recommendations mandate immediate refactoring of the asynchronous thre
 
 ### [FIND-ARCH-001 | Disconnected Output Telemetry Streams]
 **Description:** Output boundaries between `ScriptExecutor` STDOUT capture and GUI logging lack an intermediate persistent diagnostic sink.
-**Evidence:** `ScriptExecutor.cs` line 113 intercepts STDOUT to UI events but does not log to disk.
+**Evidence:** `ScriptExecutor.cs` intercepts STDOUT to UI events but does not log to disk.
 **Root Cause:** Rapid prototyping bypassing standard application logging frameworks.
 **Impact Matrix:**
 - **Technical:** Cannot debug scripts post-crash.
@@ -106,6 +108,18 @@ Strategic recommendations mandate immediate refactoring of the asynchronous thre
 **Recommendation:** Replace all empty `catch {}` blocks with calls to `TelemetryLogger.LogException(ex)`.
 **Validation Method:** Induce file-lock and verify telemetry output.
 
+### [FIND-SEC-002 | Absence of Payload Integrity Validation]
+**Description:** External scripts (`.ps1`) are invoked dynamically by their filename with a bypass execution policy. An attacker with local user rights can silently overwrite these scripts, achieving arbitrary code execution with administrative permissions.
+**Evidence:** `ScriptExecutor.cs` searches for a script path and directly launches it via PowerShell without checking file hash signatures against trusted sources.
+**Root Cause:** Assumption of local environment trust.
+**Impact Matrix:**
+- **Security:** Extremely high vector for local privilege escalation (LPE).
+**Category:** `Transformational Opportunity`
+**Proven Industry Reference:** SHA-256 hash validation of executed payloads prior to process spawning.
+**Metrics & Metadata:** Severity: Critical | Value: Transformational | Confidence: High | Effort: M | ROI: High
+**Recommendation:** Implement `VerifyScriptIntegrity` checking the executed file's SHA-256 hash against a verified known-good list (or embedded resource). Block execution if compromised.
+**Validation Method:** Modify a payload manually and attempt to run it.
+
 ### Reliability
 
 ### [FIND-REL-001 | Unbounded Synchronous OS API Calls (WMI)]
@@ -120,17 +134,19 @@ Strategic recommendations mandate immediate refactoring of the asynchronous thre
 **Recommendation:** Implement `SafeWmiTask` wrappers with a strict `Task.Delay(2000)` race.
 **Validation Method:** Audit `SystemStatsService` initialization.
 
-### Data
+### Data & Scalability
 
-### [FIND-DAT-001 | Volatile Cache Path Resolution]
-**Description:** `ScriptExecutor` loops through 5 distinct heuristic paths to find execution payloads, falling back to temp file extraction without verifying extraction integrity.
-**Evidence:** `FindScriptPath` hierarchy.
-**Root Cause:** Ambiguous build environments vs runtime production constraints.
+### [FIND-SCL-001 | Excessive WMI CPU Cycle Overhead]
+**Description:** Polling WMI for static hardware strings and RAM capacity induces hundreds of milliseconds of latency and spikes CPU consumption during telemetry refreshing.
+**Evidence:** `SystemStatsService.cs` extensively queries `Win32_OperatingSystem`, `Win32_Processor`, and `Win32_VideoController`.
+**Root Cause:** Utilizing heavy management instrumentation interfaces for data obtainable via lightweight native hooks.
 **Impact Matrix:**
-- **Data:** Potential mismatch executing older script versions if residual directories exist.
-**Category:** `Incremental Improvement`
-**Recommendation:** Centralize path resolution logging via telemetry to trace the exact resolved execution paths.
-**Validation Method:** Review log outputs for path tracing.
+- **Scalability:** Generates artificial baseline load on the host.
+**Category:** `Transformational Opportunity`
+**Proven Industry Reference:** P/Invoke `GlobalMemoryStatusEx` and direct Windows Registry reads.
+**Metrics & Metadata:** Severity: Low | Value: Transformational | Confidence: High | Effort: L | ROI: High
+**Recommendation:** Completely eradicate WMI from `SystemStatsService`. Read CPU/GPU directly from HKLM hardware keys, and pull RAM data natively.
+**Validation Method:** Profile CPU consumption drops.
 
 ---
 
@@ -145,8 +161,8 @@ Strategic recommendations mandate immediate refactoring of the asynchronous thre
 - Implement explicit wait states during cancellation teardown (`p.WaitForExit()`) to secure execution closures.
 
 ### Strategic Initiatives & Transformational Horizons (10x Value)
-- Port all WMI calls completely to `PerformanceCounter` structures to regain processing cycles.
-- Introduce cryptographic signature validation of all `.ps1` payloads before execution.
+- **Security:** Implement runtime cryptographic signature validation (`VerifyScriptIntegrity`) of all `.ps1` payloads before execution.
+- **Operational Leverage:** Port all WMI calls completely to `Microsoft.Win32.Registry` and `GlobalMemoryStatusEx` native APIs to drop application baseline load to zero.
 
 ---
 
@@ -157,5 +173,5 @@ Strategic recommendations mandate immediate refactoring of the asynchronous thre
 - **Unknowns:** The exact concurrency constraints of the 80+ PowerShell scripts when run simultaneously in the target environment.
 
 ### Final Verdict
-**Health Rating:** Fair (Transitioning to Good via Tier-2 hardening).
-The underlying modular abstraction represents exceptional technical foresight, but its execution runtime was significantly compromised by legacy threading patterns and silent error masks. Execution of the Prioritized Roadmap solidifies the tool into an enterprise-grade utility ready for scaled deployment.
+**Health Rating:** Fair (Transitioning to Excellent via 10x Transformation targets).
+The underlying modular abstraction represents exceptional technical foresight. Execution of the Prioritized Roadmap directly converts major system risks into exponential operational leverage, rendering the application exceptionally resilient, fast, and secure.

@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -51,6 +52,14 @@ namespace SystemMaintenance.Core
             if (path == null) {
                 var err = OnError;
                 if (err != null) err("Script file not found: " + script.FileName);
+                return;
+            }
+
+            if (ConfigManager.IsSafeMode && !VerifyScriptIntegrity(path, script.FileName))
+            {
+                var err = OnError;
+                if (err != null) err("SECURITY ERROR: Script integrity validation failed for " + script.FileName);
+                TelemetryLogger.Log($"SECURITY BLOCKED: {script.FileName} failed SHA256 integrity check.");
                 return;
             }
 
@@ -267,6 +276,47 @@ namespace SystemMaintenance.Core
             } catch (Exception ex) {
                 var err = OnError;
                 if (err != null) err("Failed to extract embedded scripts: " + ex.Message);
+            }
+        }
+
+        private bool VerifyScriptIntegrity(string externalPath, string fileName)
+        {
+            try
+            {
+                var assembly = System.Reflection.Assembly.GetExecutingAssembly();
+                string[] resources = assembly.GetManifestResourceNames();
+
+                string targetResource = null;
+                foreach (string r in resources)
+                {
+                    if (r.EndsWith(fileName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        targetResource = r;
+                        break;
+                    }
+                }
+
+                if (targetResource == null) return true; // Cannot verify against resource
+
+                using (var sha256 = SHA256.Create())
+                using (var embeddedStream = assembly.GetManifestResourceStream(targetResource))
+                using (var externalStream = File.OpenRead(externalPath))
+                {
+                    byte[] embeddedHash = sha256.ComputeHash(embeddedStream);
+                    byte[] externalHash = sha256.ComputeHash(externalStream);
+
+                    if (embeddedHash.Length != externalHash.Length) return false;
+                    for (int i = 0; i < embeddedHash.Length; i++)
+                    {
+                        if (embeddedHash[i] != externalHash[i]) return false;
+                    }
+                }
+                return true;
+            }
+            catch (Exception ex)
+            {
+                TelemetryLogger.LogException(ex, "Integrity Verification");
+                return false; // Fail safe
             }
         }
 
